@@ -61,10 +61,10 @@ const Login = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0F2C" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F7F9FC" />
 
-      <View style={styles.bgAccent} />
-      <View style={styles.bgCircle} />
+      {/* Decorative top accent */}
+      <View style={styles.topAccent} />
 
       <KeyboardAvoidingView
         style={styles.container}
@@ -73,10 +73,10 @@ const Login = ({ navigation }) => {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoWrap}>
-            <MaterialCommunityIcons name="pill" size={36} color="#fff" />
+            <MaterialCommunityIcons name="pill" size={32} color="#fff" />
           </View>
-          <Text style={styles.brand}>MedTrack</Text>
-          <Text style={styles.title}>Welcome Back</Text>
+          <Text style={styles.brand}>MEDTRACK</Text>
+          <Text style={styles.title}>Welcome back</Text>
           <Text style={styles.subtitle}>
             Sign in to continue your health journey
           </Text>
@@ -84,6 +84,8 @@ const Login = ({ navigation }) => {
 
         {/* Form */}
         <View style={styles.card}>
+          {/* Email */}
+          <Text style={styles.fieldLabel}>Email address</Text>
           <View
             style={[
               styles.inputContainer,
@@ -92,13 +94,13 @@ const Login = ({ navigation }) => {
           >
             <MaterialCommunityIcons
               name="email-outline"
-              size={20}
-              color={focusedField === "email" ? "#6C63FF" : "#9A9BB0"}
+              size={18}
+              color={focusedField === "email" ? "#0EA5B0" : "#A0AEC0"}
             />
             <TextInput
               style={styles.input}
-              placeholder="Email Address"
-              placeholderTextColor="#9A9BB0"
+              placeholder="you@example.com"
+              placeholderTextColor="#CBD5E0"
               keyboardType="email-address"
               autoCapitalize="none"
               value={email}
@@ -108,6 +110,8 @@ const Login = ({ navigation }) => {
             />
           </View>
 
+          {/* Password */}
+          <Text style={styles.fieldLabel}>Password</Text>
           <View
             style={[
               styles.inputContainer,
@@ -116,46 +120,61 @@ const Login = ({ navigation }) => {
           >
             <MaterialCommunityIcons
               name="lock-outline"
-              size={20}
-              color={focusedField === "password" ? "#6C63FF" : "#9A9BB0"}
+              size={18}
+              color={focusedField === "password" ? "#0EA5B0" : "#A0AEC0"}
             />
             <TextInput
               style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#9A9BB0"
+              placeholder="Your password"
+              placeholderTextColor="#CBD5E0"
               secureTextEntry={secure}
               value={password}
               onChangeText={setPassword}
               onFocus={() => setFocusedField("password")}
               onBlur={() => setFocusedField(null)}
             />
-            <TouchableOpacity onPress={() => setSecure(!secure)}>
+            <TouchableOpacity
+              onPress={() => setSecure(!secure)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <MaterialCommunityIcons
                 name={secure ? "eye-off-outline" : "eye-outline"}
-                size={20}
-                color="#9A9BB0"
+                size={18}
+                color="#A0AEC0"
               />
             </TouchableOpacity>
           </View>
 
           <TouchableOpacity
-            style={styles.loginButton}
+            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
             onPress={handleLogin}
             disabled={loading}
+            activeOpacity={0.85}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.loginText}>Sign In</Text>
+              <>
+                <Text style={styles.loginText}>Sign In</Text>
+                <MaterialCommunityIcons
+                  name="arrow-right"
+                  size={18}
+                  color="#fff"
+                />
+              </>
             )}
           </TouchableOpacity>
+        </View>
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account?</Text>
-            <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-              <Text style={styles.signup}> Create Account</Text>
-            </TouchableOpacity>
-          </View>
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Don't have an account?</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Register")}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+          >
+            <Text style={styles.signup}> Create account</Text>
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -165,107 +184,158 @@ const Login = ({ navigation }) => {
 export default Login;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0A0F2C" },
+  root: {
+    flex: 1,
+    backgroundColor: "#F7F9FC",
+  },
 
-  bgAccent: {
+  topAccent: {
     position: "absolute",
-    top: -80,
-    right: -80,
-    width: 280,
+    top: 0,
+    left: 0,
+    right: 0,
     height: 280,
-    borderRadius: 140,
-    backgroundColor: "#6C63FF22",
+    backgroundColor: "#EBF8FA",
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
   },
 
-  bgCircle: {
-    position: "absolute",
-    bottom: 100,
-    left: -60,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "#4ECDC422",
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 24,
   },
 
-  container: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
-
-  header: { alignItems: "center", marginBottom: 36 },
+  header: {
+    alignItems: "center",
+    marginBottom: 32,
+  },
 
   logoWrap: {
     width: 72,
     height: 72,
-    borderRadius: 22,
-    backgroundColor: "#6C63FF",
+    borderRadius: 24,
+    backgroundColor: "#0EA5B0",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
-    shadowColor: "#6C63FF",
+    marginBottom: 20,
+    shadowColor: "#0EA5B0",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
+    shadowOpacity: 0.3,
     shadowRadius: 16,
-    elevation: 12,
+    elevation: 10,
   },
 
   brand: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#6C63FF",
-    letterSpacing: 3,
-    marginBottom: 10,
+    color: "#0EA5B0",
+    letterSpacing: 4,
+    marginBottom: 12,
   },
 
-  title: { fontSize: 28, fontWeight: "800", color: "#FFFFFF", marginBottom: 6 },
+  title: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#1A2235",
+    marginBottom: 8,
+  },
 
-  subtitle: { fontSize: 14, color: "#9A9BB0", textAlign: "center" },
+  subtitle: {
+    fontSize: 14,
+    color: "#718096",
+    textAlign: "center",
+    lineHeight: 20,
+  },
 
   card: {
-    backgroundColor: "#13193D",
+    backgroundColor: "#FFFFFF",
     borderRadius: 24,
     padding: 24,
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 6,
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#EDF2F7",
+  },
+
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#4A5568",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    textTransform: "uppercase",
   },
 
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0D1235",
+    backgroundColor: "#F7F9FC",
     borderRadius: 14,
     paddingHorizontal: 16,
-    marginBottom: 14,
-    height: 56,
-    borderWidth: 1,
-    borderColor: "#1E2550",
+    marginBottom: 20,
+    height: 54,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
   },
 
-  inputFocused: { borderColor: "#6C63FF" },
+  inputFocused: {
+    borderColor: "#0EA5B0",
+    backgroundColor: "#F0FAFB",
+  },
 
-  input: { flex: 1, marginLeft: 10, fontSize: 15, color: "#FFFFFF" },
+  input: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 15,
+    color: "#1A2235",
+  },
 
   loginButton: {
-    backgroundColor: "#6C63FF",
+    backgroundColor: "#0EA5B0",
     height: 56,
-    borderRadius: 14,
+    borderRadius: 16,
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 6,
-    shadowColor: "#6C63FF",
+    gap: 8,
+    marginTop: 4,
+    shadowColor: "#0EA5B0",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.35,
     shadowRadius: 12,
     elevation: 8,
+  },
+
+  loginButtonDisabled: {
+    opacity: 0.7,
   },
 
   loginText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 
-  footer: { flexDirection: "row", justifyContent: "center", marginTop: 20 },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 24,
+  },
 
-  footerText: { color: "#9A9BB0", fontSize: 14 },
+  footerText: {
+    color: "#718096",
+    fontSize: 14,
+  },
 
-  signup: { color: "#6C63FF", fontWeight: "700", fontSize: 14 },
+  signup: {
+    color: "#0EA5B0",
+    fontWeight: "700",
+    fontSize: 14,
+  },
 });

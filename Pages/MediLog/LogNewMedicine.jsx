@@ -1,22 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Alert,
+  Modal,
+  Animated,
   Platform,
   StatusBar,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
-import Constants from "expo-constants";
 import { Text } from "../../Components/TextWrapper";
-// ─── Detect Expo Go ───────────────────────────────────────────────────────────
-const isExpoGo = Constants.appOwnership === "expo";
+
+// Import from the centralised service — NO notification listener lives here
+import {
+  isExpoGo,
+  scheduleNotifications,
+} from "./notificationService"; // ← adjust path
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DOSE_TYPES = [
@@ -48,6 +51,27 @@ const DEFAULT_TIMES = {
   4: ["08:00 AM", "12:00 PM", "04:00 PM", "08:00 PM"],
 };
 
+const HOURS = Array.from({ length: 12 }, (_, i) =>
+  String(i + 1).padStart(2, "0"),
+);
+const MINUTES = [
+  "00",
+  "05",
+  "10",
+  "15",
+  "20",
+  "25",
+  "30",
+  "35",
+  "40",
+  "45",
+  "50",
+  "55",
+];
+const PERIODS = ["AM", "PM"];
+const ITEM_HEIGHT = 48;
+const STEP_LABELS = ["Details", "Dose", "Schedule"];
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const parseTime = (timeStr) => {
   try {
@@ -61,44 +85,532 @@ const parseTime = (timeStr) => {
   }
 };
 
-// Notification display behavior
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+const formatExpiryInput = (raw) => {
+  const digits = raw.replace(/\D/g, "").slice(0, 6);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+};
+
+const validateExpiry = (value) => {
+  const regex = /^(0[1-9]|1[0-2])\/(\d{4})$/;
+  if (!regex.test(value)) return false;
+  const [mm, yyyy] = value.split("/");
+  const now = new Date();
+  const expiryDate = new Date(parseInt(yyyy), parseInt(mm) - 1, 1);
+  const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  return expiryDate >= currentMonth;
+};
+
+// ─── AppModal ─────────────────────────────────────────────────────────────────
+const AppModal = ({
+  visible,
+  icon,
+  iconColor,
+  iconBg,
+  title,
+  message,
+  buttons = [],
+  onDismiss,
+}) => {
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      scaleAnim.setValue(0.85);
+      opacityAnim.setValue(0);
+    }
+  }, [visible]);
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={onDismiss}
+    >
+      <Animated.View style={[modalStyles.overlay, { opacity: opacityAnim }]}>
+        <Animated.View
+          style={[modalStyles.box, { transform: [{ scale: scaleAnim }] }]}
+        >
+          {icon && (
+            <View
+              style={[
+                modalStyles.iconWrap,
+                { backgroundColor: iconBg || "#F0FAFB" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name={icon}
+                size={32}
+                color={iconColor || "#0EA5B0"}
+              />
+            </View>
+          )}
+          <Text style={modalStyles.title}>{title}</Text>
+          {!!message && <Text style={modalStyles.message}>{message}</Text>}
+          <View
+            style={[
+              modalStyles.btnRow,
+              buttons.length === 1 && { justifyContent: "center" },
+            ]}
+          >
+            {buttons.map((btn, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[
+                  modalStyles.btn,
+                  btn.primary
+                    ? modalStyles.btnPrimary
+                    : modalStyles.btnSecondary,
+                ]}
+                onPress={btn.onPress}
+                activeOpacity={0.85}
+              >
+                {btn.icon && (
+                  <MaterialCommunityIcons
+                    name={btn.icon}
+                    size={16}
+                    color={btn.primary ? "#fff" : "#4A5568"}
+                  />
+                )}
+                <Text
+                  style={[
+                    modalStyles.btnText,
+                    btn.primary
+                      ? modalStyles.btnTextPrimary
+                      : modalStyles.btnTextSecondary,
+                  ]}
+                >
+                  {btn.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+};
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(26,34,53,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+  },
+  box: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 28,
+    padding: 28,
+    width: "100%",
+    alignItems: "center",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 32,
+    elevation: 16,
+  },
+  iconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1A2235",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  message: {
+    fontSize: 14,
+    color: "#718096",
+    textAlign: "center",
+    lineHeight: 21,
+    marginBottom: 24,
+  },
+  btnRow: { flexDirection: "row", gap: 10, width: "100%" },
+  btn: {
+    flex: 1,
+    height: 50,
+    borderRadius: 14,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+  },
+  btnPrimary: {
+    backgroundColor: "#0EA5B0",
+    shadowColor: "#0EA5B0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  btnSecondary: {
+    backgroundColor: "#F7F9FC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+  },
+  btnText: { fontSize: 14, fontWeight: "700" },
+  btnTextPrimary: { color: "#fff" },
+  btnTextSecondary: { color: "#4A5568" },
 });
 
-// Create Android notification channel
-async function setupNotificationChannel() {
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("medicine-reminders", {
-      name: "Medicine Reminders",
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: true,
-      vibrationPattern: [0, 250, 250, 250],
-    });
-  }
-}
+// ─── TimePicker Bottom Sheet ──────────────────────────────────────────────────
+const TimePicker = ({ visible, initialTime, onConfirm, onClose }) => {
+  const slideAnim = useRef(new Animated.Value(360)).current;
 
-// Ask notification permission
-async function requestNotificationPermission() {
-  if (isExpoGo) return false;
+  const parseInitial = (t) => {
+    if (!t) return { hour: "08", minute: "00", period: "AM" };
+    try {
+      const [time, period] = t.split(" ");
+      const [h, m] = time.split(":");
+      return {
+        hour: h.padStart(2, "0"),
+        minute: m || "00",
+        period: period || "AM",
+      };
+    } catch {
+      return { hour: "08", minute: "00", period: "AM" };
+    }
+  };
 
-  const { status } = await Notifications.getPermissionsAsync();
+  const initial = parseInitial(initialTime);
+  const [selectedHour, setSelectedHour] = useState(initial.hour);
+  const [selectedMinute, setSelectedMinute] = useState(initial.minute);
+  const [selectedPeriod, setSelectedPeriod] = useState(initial.period);
 
-  if (status !== "granted") {
-    const result = await Notifications.requestPermissionsAsync();
-    return result.status === "granted";
-  }
+  const hourScrollRef = useRef(null);
+  const minuteScrollRef = useRef(null);
+  const periodScrollRef = useRef(null);
 
-  return true;
-}
-// ─── Component ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (visible) {
+      const parsed = parseInitial(initialTime);
+      setSelectedHour(parsed.hour);
+      setSelectedMinute(parsed.minute);
+      setSelectedPeriod(parsed.period);
+
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 80,
+        friction: 12,
+      }).start();
+
+      setTimeout(() => {
+        const hIdx = HOURS.indexOf(parsed.hour);
+        const mIdx = MINUTES.indexOf(parsed.minute);
+        const pIdx = PERIODS.indexOf(parsed.period);
+        if (hIdx >= 0)
+          hourScrollRef.current?.scrollTo({
+            y: hIdx * ITEM_HEIGHT,
+            animated: false,
+          });
+        if (mIdx >= 0)
+          minuteScrollRef.current?.scrollTo({
+            y: mIdx * ITEM_HEIGHT,
+            animated: false,
+          });
+        if (pIdx >= 0)
+          periodScrollRef.current?.scrollTo({
+            y: pIdx * ITEM_HEIGHT,
+            animated: false,
+          });
+      }, 100);
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: 360,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible]);
+
+  const handleConfirm = () =>
+    onConfirm(`${selectedHour}:${selectedMinute} ${selectedPeriod}`);
+
+  const renderColumn = (data, selected, onSelect, scrollRef) => (
+    <View style={tpStyles.column}>
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={ITEM_HEIGHT}
+        decelerationRate="fast"
+        onMomentumScrollEnd={(e) => {
+          const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+          onSelect(data[Math.max(0, Math.min(idx, data.length - 1))]);
+        }}
+        contentContainerStyle={{ paddingVertical: ITEM_HEIGHT }}
+        style={{ width: "100%" }}
+      >
+        {data.map((item) => (
+          <TouchableOpacity
+            key={item}
+            style={tpStyles.item}
+            onPress={() => {
+              onSelect(item);
+              scrollRef.current?.scrollTo({
+                y: data.indexOf(item) * ITEM_HEIGHT,
+                animated: true,
+              });
+            }}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                tpStyles.itemText,
+                item === selected && tpStyles.itemTextSelected,
+              ]}
+            >
+              {item}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      <View pointerEvents="none" style={tpStyles.selectionOverlay}>
+        <View style={tpStyles.selectionBar} />
+      </View>
+    </View>
+  );
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={tpStyles.backdrop}
+        activeOpacity={1}
+        onPress={onClose}
+      />
+      <Animated.View
+        style={[tpStyles.sheet, { transform: [{ translateY: slideAnim }] }]}
+      >
+        <View style={tpStyles.handle} />
+        <View style={tpStyles.header}>
+          <TouchableOpacity onPress={onClose} style={tpStyles.headerSideBtn}>
+            <Text style={tpStyles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={tpStyles.headerTitle}>Select Time</Text>
+          <TouchableOpacity
+            onPress={handleConfirm}
+            style={tpStyles.headerSideBtn}
+          >
+            <Text style={tpStyles.confirmHeaderText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={tpStyles.preview}>
+          <MaterialCommunityIcons
+            name="clock-outline"
+            size={18}
+            color="#0EA5B0"
+          />
+          <Text style={tpStyles.previewText}>
+            {" "}
+            {selectedHour}:{selectedMinute} {selectedPeriod}
+          </Text>
+        </View>
+        <View style={tpStyles.columnsRow}>
+          <View style={tpStyles.columnWrap}>
+            <Text style={tpStyles.columnLabel}>Hour</Text>
+            {renderColumn(HOURS, selectedHour, setSelectedHour, hourScrollRef)}
+          </View>
+          <Text style={tpStyles.colonSep}>:</Text>
+          <View style={tpStyles.columnWrap}>
+            <Text style={tpStyles.columnLabel}>Minute</Text>
+            {renderColumn(
+              MINUTES,
+              selectedMinute,
+              setSelectedMinute,
+              minuteScrollRef,
+            )}
+          </View>
+          <View style={tpStyles.columnWrap}>
+            <Text style={tpStyles.columnLabel}>Period</Text>
+            {renderColumn(
+              PERIODS,
+              selectedPeriod,
+              setSelectedPeriod,
+              periodScrollRef,
+            )}
+          </View>
+        </View>
+        <TouchableOpacity
+          style={tpStyles.confirmFullBtn}
+          onPress={handleConfirm}
+          activeOpacity={0.85}
+        >
+          <MaterialCommunityIcons name="check" size={18} color="#fff" />
+          <Text style={tpStyles.confirmFullText}> Set Time</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </Modal>
+  );
+};
+
+const tpStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: "rgba(26,34,53,0.4)" },
+  sheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingBottom: 36,
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#E2E8F0",
+    alignSelf: "center",
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F4F8",
+  },
+  headerSideBtn: { minWidth: 64, paddingVertical: 4 },
+  headerTitle: { fontSize: 16, fontWeight: "800", color: "#1A2235" },
+  cancelText: { fontSize: 15, color: "#A0AEC0", fontWeight: "600" },
+  confirmHeaderText: {
+    fontSize: 15,
+    color: "#0EA5B0",
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  preview: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F0FAFB",
+    marginHorizontal: 20,
+    marginTop: 14,
+    marginBottom: 4,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#BAE6EA",
+  },
+  previewText: { fontSize: 20, fontWeight: "800", color: "#0EA5B0" },
+  columnsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginTop: 8,
+    gap: 4,
+  },
+  columnWrap: { flex: 1, alignItems: "center" },
+  columnLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#A0AEC0",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  column: { height: ITEM_HEIGHT * 3, overflow: "hidden", width: "100%" },
+  item: { height: ITEM_HEIGHT, justifyContent: "center", alignItems: "center" },
+  itemText: { fontSize: 22, fontWeight: "600", color: "#CBD5E0" },
+  itemTextSelected: { color: "#1A2235", fontWeight: "800", fontSize: 24 },
+  selectionOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
+  selectionBar: {
+    height: ITEM_HEIGHT,
+    backgroundColor: "#0EA5B015",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#BAE6EA",
+    marginHorizontal: 4,
+  },
+  colonSep: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#CBD5E0",
+    marginBottom: 24,
+    marginHorizontal: 2,
+  },
+  confirmFullBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0EA5B0",
+    marginHorizontal: 20,
+    marginTop: 16,
+    height: 54,
+    borderRadius: 16,
+    shadowColor: "#0EA5B0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  confirmFullText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+});
+
+// ─── StepHeader ───────────────────────────────────────────────────────────────
+const StepHeader = ({ title, subtitle }) => (
+  <View style={stepStyles.container}>
+    <Text style={stepStyles.title}>{title}</Text>
+    {subtitle ? <Text style={stepStyles.subtitle}>{subtitle}</Text> : null}
+  </View>
+);
+
+const stepStyles = StyleSheet.create({
+  container: { marginBottom: 20 },
+  title: { fontSize: 18, fontWeight: "800", color: "#1A2235", marginBottom: 4 },
+  subtitle: { fontSize: 13, color: "#718096", lineHeight: 19 },
+});
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 const LogNewMedicine = ({ navigation }) => {
   const [name, setName] = useState("");
   const [expiry, setExpiry] = useState("");
+  const [expiryError, setExpiryError] = useState("");
   const [selectedDoseType, setSelectedDoseType] = useState(null);
   const [selectedFrequency, setSelectedFrequency] = useState(null);
   const [times, setTimes] = useState([]);
@@ -107,95 +619,66 @@ const LogNewMedicine = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
   const [step, setStep] = useState(1);
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [editingTimeIndex, setEditingTimeIndex] = useState(null);
+  const [modal, setModal] = useState({
+    visible: false,
+    icon: null,
+    iconColor: "#0EA5B0",
+    iconBg: "#F0FAFB",
+    title: "",
+    message: "",
+    buttons: [],
+  });
+
+  const showModal = (config) => setModal({ ...config, visible: true });
+  const hideModal = () => setModal((m) => ({ ...m, visible: false }));
+
+  // ── NOTE: No notification listener here. It lives in App.js. ─────────────
+
+  const handleExpiryChange = (raw) => {
+    setExpiry(formatExpiryInput(raw));
+    if (expiryError) setExpiryError("");
+  };
+
+  const checkExpiry = () => {
+    if (!expiry.trim()) {
+      setExpiryError("Expiry date is required.");
+      return false;
+    }
+    if (!validateExpiry(expiry)) {
+      setExpiryError("Please enter a valid expiry date.");
+      return false;
+    }
+    setExpiryError("");
+    return true;
+  };
 
   const handleFrequencySelect = (freq) => {
     setSelectedFrequency(freq);
     setTimes(DEFAULT_TIMES[freq.count] || []);
   };
 
-  const updateTime = (index, value) => {
+  const openTimePicker = (index) => {
+    setEditingTimeIndex(index);
+    setTimePickerVisible(true);
+  };
+
+  const handleTimeConfirm = (timeStr) => {
+    setTimePickerVisible(false);
+    if (editingTimeIndex === null) return;
     const updated = [...times];
-    updated[index] = value;
+    updated[editingTimeIndex] = timeStr;
     setTimes(updated);
+    setEditingTimeIndex(null);
   };
 
-  // Safe: only runs in dev build, silently skips in Expo Go
-  const scheduleNotifications = async (medicine) => {
-    if (isExpoGo) return [];
-
-    try {
-      const permission = await requestNotificationPermission();
-
-      if (!permission) {
-        console.warn("Notification permission denied");
-        return [];
-      }
-
-      await setupNotificationChannel();
-
-      const ids = [];
-
-      for (const time of medicine.times) {
-        const { hours, minutes } = parseTime(time);
-
-        const now = new Date();
-        const triggerDate = new Date();
-
-        triggerDate.setHours(hours);
-        triggerDate.setMinutes(minutes);
-        triggerDate.setSeconds(0);
-
-        // If scheduled time already passed today → move to tomorrow
-        if (triggerDate <= now) {
-          triggerDate.setDate(triggerDate.getDate() + 1);
-        }
-
-        const id = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "💊 Medicine Reminder",
-            body: `Time to take your ${medicine.name} (${medicine.doseType})`,
-            sound: true,
-            priority: Notifications.AndroidNotificationPriority.HIGH,
-            data: {
-              medicineId: medicine.id,
-              medicineName: medicine.name,
-            },
-          },
-
-          trigger: {
-            type: "daily",
-            hour: hours,
-            minute: minutes,
-            channelId: "medicine-reminders",
-          },
-        });
-
-        ids.push(id);
-      }
-
-      return ids;
-    } catch (err) {
-      console.warn("Notification scheduling error:", err);
-      return [];
-    }
-  };
-
-  useEffect(() => {
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      }),
-    });
-  }, []);
-
+  // ─── Seed today's history entries ─────────────────────────────────────────
   const seedTodayHistory = async (userEmail, medicine) => {
     if (!medicine.times.length) return;
     const historyRaw = await AsyncStorage.getItem(`history_${userEmail}`);
     const history = historyRaw ? JSON.parse(historyRaw) : [];
     const today = new Date();
-
     for (const time of medicine.times) {
       const { hours, minutes } = parseTime(time);
       const scheduled = new Date(today);
@@ -214,25 +697,100 @@ const LogNewMedicine = ({ navigation }) => {
     await AsyncStorage.setItem(`history_${userEmail}`, JSON.stringify(history));
   };
 
-  const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert("Required", "Please enter the medicine name.");
-      return;
+  // ─── Step validation ───────────────────────────────────────────────────────
+  const handleNext = () => {
+    if (step === 1) {
+      if (!name.trim()) {
+        showModal({
+          visible: true,
+          icon: "alert-circle-outline",
+          iconColor: "#F59E0B",
+          iconBg: "#FFFBEB",
+          title: "Medicine Name Required",
+          message: "Please enter the name of the medicine before continuing.",
+          buttons: [
+            {
+              label: "Got it",
+              primary: true,
+              icon: "check",
+              onPress: hideModal,
+            },
+          ],
+        });
+        return;
+      }
+      if (!checkExpiry()) {
+        showModal({
+          visible: true,
+          icon: "calendar-alert",
+          iconColor: "#EF4444",
+          iconBg: "#FFF5F5",
+          title: "Invalid Expiry Date",
+          message:
+            "Please enter a valid date in MM/YYYY format that is not in the past.",
+          buttons: [
+            {
+              label: "Fix it",
+              primary: true,
+              icon: "pencil-outline",
+              onPress: hideModal,
+            },
+          ],
+        });
+        return;
+      }
+      if (!quantity.trim()) {
+        showModal({
+          visible: true,
+          icon: "counter",
+          iconColor: "#F59E0B",
+          iconBg: "#FFFBEB",
+          title: "Quantity Required",
+          message:
+            "Please enter the quantity of medicine you currently have in stock.",
+          buttons: [
+            {
+              label: "Got it",
+              primary: true,
+              icon: "check",
+              onPress: hideModal,
+            },
+          ],
+        });
+        return;
+      }
     }
+    setStep(step + 1);
+  };
+
+  // ─── Save ─────────────────────────────────────────────────────────────────
+  const handleSave = async () => {
     if (!selectedDoseType) {
-      Alert.alert("Required", "Please select a dose type.");
+      showModal({
+        visible: true,
+        icon: "pill",
+        iconColor: "#F59E0B",
+        iconBg: "#FFFBEB",
+        title: "Dose Type Required",
+        message: "Please select a dose type for this medicine.",
+        buttons: [
+          { label: "Got it", primary: true, icon: "check", onPress: hideModal },
+        ],
+      });
       return;
     }
     if (!selectedFrequency) {
-      Alert.alert("Required", "Please select a dosage frequency.");
-      return;
-    }
-    if (!quantity.trim()) {
-      Alert.alert("Required", "Please enter the quantity.");
-      return;
-    }
-    if (!expiry.trim()) {
-      Alert.alert("Required", "Please enter the expiry date.");
+      showModal({
+        visible: true,
+        icon: "clock-outline",
+        iconColor: "#F59E0B",
+        iconBg: "#FFFBEB",
+        title: "Frequency Required",
+        message: "Please select how often this medicine should be taken.",
+        buttons: [
+          { label: "Got it", primary: true, icon: "check", onPress: hideModal },
+        ],
+      });
       return;
     }
 
@@ -240,7 +798,25 @@ const LogNewMedicine = ({ navigation }) => {
     try {
       const userEmail = await AsyncStorage.getItem("currentUser");
       if (!userEmail) {
-        Alert.alert("Session Error", "Please log in again.");
+        showModal({
+          visible: true,
+          icon: "account-alert-outline",
+          iconColor: "#EF4444",
+          iconBg: "#FFF5F5",
+          title: "Session Expired",
+          message: "Your session has ended. Please log in again.",
+          buttons: [
+            {
+              label: "Log In",
+              primary: true,
+              icon: "login",
+              onPress: () => {
+                hideModal();
+                navigation.replace("Login");
+              },
+            },
+          ],
+        });
         return;
       }
 
@@ -264,295 +840,423 @@ const LogNewMedicine = ({ navigation }) => {
         notificationIds: [],
       };
 
+      // scheduleNotifications is imported from the centralised service
       newMed.notificationIds = await scheduleNotifications(newMed);
       meds.push(newMed);
-
       await AsyncStorage.setItem(
         `medicines_${userEmail}`,
         JSON.stringify(meds),
       );
       await seedTodayHistory(userEmail, newMed);
 
-      const msg = isExpoGo
-        ? `${name} logged successfully!\n\n📲 Daily reminders need a development build — timings are saved and will activate automatically.`
-        : `${name} logged with ${times.length} daily reminder(s) scheduled.`;
+      const reminderNote = isExpoGo
+        ? "Reminders need a development build to activate. Timings are saved and ready."
+        : `${times.length} daily reminder${times.length !== 1 ? "s" : ""} scheduled with Mark as Taken / Ignore actions.`;
 
-      Alert.alert("Medicine Added! 🎉", msg, [
-        { text: "Got it!", onPress: () => navigation.goBack() },
-      ]);
+      showModal({
+        visible: true,
+        icon: "check-circle-outline",
+        iconColor: "#10B981",
+        iconBg: "#ECFDF5",
+        title: `${name} Added! 🎉`,
+        message: reminderNote,
+        buttons: [
+          {
+            label: "Done",
+            primary: true,
+            icon: "arrow-right",
+            onPress: () => {
+              hideModal();
+              navigation.goBack();
+            },
+          },
+        ],
+      });
     } catch (e) {
-      Alert.alert("Error", "Failed to save. Please try again.");
       console.error(e);
+      showModal({
+        visible: true,
+        icon: "alert-circle-outline",
+        iconColor: "#EF4444",
+        iconBg: "#FFF5F5",
+        title: "Save Failed",
+        message: "Something went wrong. Please try again.",
+        buttons: [
+          {
+            label: "Retry",
+            primary: true,
+            icon: "refresh",
+            onPress: () => {
+              hideModal();
+              handleSave();
+            },
+          },
+        ],
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // ─── Step renders ─────────────────────────────────────────────────────────
+  // ─── Step 1 ───────────────────────────────────────────────────────────────
   const renderStep1 = () => (
     <>
-      <Text style={styles.stepTitle}>Basic Information</Text>
-
-      {[
-        {
-          field: "name",
-          icon: "pill",
-          label: "Medicine Name *",
-          placeholder: "e.g. Paracetamol 500mg",
-          value: name,
-          setter: setName,
-          kb: "default",
-        },
-        {
-          field: "expiry",
-          icon: "calendar-remove-outline",
-          label: "Expiry Date *",
-          placeholder: "MM/YYYY",
-          value: expiry,
-          setter: setExpiry,
-          kb: "default",
-        },
-        {
-          field: "qty",
-          icon: "counter",
-          label: "Quantity in Stock *",
-          placeholder: "e.g. 30",
-          value: quantity,
-          setter: setQuantity,
-          kb: "numeric",
-        },
-      ].map(({ field, icon, label, placeholder, value, setter, kb }) => (
-        <View key={field}>
-          <View style={styles.inputLabel}>
-            <MaterialCommunityIcons name={icon} size={16} color="#6C63FF" />
-            <Text style={styles.labelText}> {label}</Text>
-          </View>
-          <View
-            style={[
-              styles.inputContainer,
-              focusedField === field && styles.inputFocused,
-            ]}
-          >
-            <TextInput
-              style={styles.input}
-              placeholder={placeholder}
-              placeholderTextColor="#9A9BB0"
-              value={value}
-              onChangeText={setter}
-              keyboardType={kb}
-              onFocus={() => setFocusedField(field)}
-              onBlur={() => setFocusedField(null)}
-            />
-          </View>
-        </View>
-      ))}
-
-      <View style={styles.inputLabel}>
-        <MaterialCommunityIcons
-          name="note-text-outline"
-          size={16}
-          color="#6C63FF"
-        />
-        <Text style={styles.labelText}> Notes (optional)</Text>
-      </View>
-      <View
-        style={[
-          styles.inputContainer,
-          styles.textArea,
-          focusedField === "notes" && styles.inputFocused,
-        ]}
-      >
-        <TextInput
-          style={[styles.input, { textAlignVertical: "top" }]}
-          placeholder="e.g. Take after food, with water"
-          placeholderTextColor="#9A9BB0"
-          value={notes}
-          onChangeText={setNotes}
-          multiline
-          numberOfLines={3}
-          onFocus={() => setFocusedField("notes")}
-          onBlur={() => setFocusedField(null)}
-        />
-      </View>
-    </>
-  );
-
-  const renderStep2 = () => (
-    <>
-      <Text style={styles.stepTitle}>Dose Type</Text>
-      <View style={styles.doseTypeGrid}>
-        {DOSE_TYPES.map((dt) => (
-          <TouchableOpacity
-            key={dt.label}
-            style={[
-              styles.doseTypeBtn,
-              selectedDoseType?.label === dt.label && styles.doseTypeBtnActive,
-            ]}
-            onPress={() => setSelectedDoseType(dt)}
-          >
-            <MaterialCommunityIcons
-              name={dt.icon}
-              size={24}
-              color={
-                selectedDoseType?.label === dt.label ? "#6C63FF" : "#9A9BB0"
-              }
-            />
-            <Text
-              style={[
-                styles.doseTypeLbl,
-                selectedDoseType?.label === dt.label &&
-                  styles.doseTypeLblActive,
-              ]}
-            >
-              {dt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={[styles.stepTitle, { marginTop: 24 }]}>Frequency</Text>
-      {DOSE_FREQUENCIES.map((freq) => (
-        <TouchableOpacity
-          key={freq.label}
+      <StepHeader
+        title="Basic Information"
+        subtitle="Enter the medicine details and stock information."
+      />
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Medicine Name</Text>
+        <View
           style={[
-            styles.freqBtn,
-            selectedFrequency?.label === freq.label && styles.freqBtnActive,
+            styles.inputContainer,
+            focusedField === "name" && styles.inputFocused,
           ]}
-          onPress={() => handleFrequencySelect(freq)}
         >
-          <Text
-            style={[
-              styles.freqLabel,
-              selectedFrequency?.label === freq.label && styles.freqLabelActive,
-            ]}
-          >
-            {freq.label}
-          </Text>
-          {selectedFrequency?.label === freq.label && (
+          <MaterialCommunityIcons
+            name="pill"
+            size={18}
+            color={focusedField === "name" ? "#0EA5B0" : "#A0AEC0"}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. Paracetamol 500mg"
+            placeholderTextColor="#CBD5E0"
+            value={name}
+            onChangeText={setName}
+            onFocus={() => setFocusedField("name")}
+            onBlur={() => setFocusedField(null)}
+          />
+        </View>
+      </View>
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Expiry Date</Text>
+        <View
+          style={[
+            styles.inputContainer,
+            focusedField === "expiry" && styles.inputFocused,
+            !!expiryError && styles.inputError,
+          ]}
+        >
+          <MaterialCommunityIcons
+            name="calendar-remove-outline"
+            size={18}
+            color={
+              expiryError
+                ? "#EF4444"
+                : focusedField === "expiry"
+                  ? "#0EA5B0"
+                  : "#A0AEC0"
+            }
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="MM/YYYY"
+            placeholderTextColor="#CBD5E0"
+            value={expiry}
+            onChangeText={handleExpiryChange}
+            keyboardType="numeric"
+            maxLength={7}
+            onFocus={() => setFocusedField("expiry")}
+            onBlur={() => {
+              setFocusedField(null);
+              if (expiry) checkExpiry();
+            }}
+          />
+          {expiry.length === 7 && (
             <MaterialCommunityIcons
-              name="check-circle"
-              size={20}
-              color="#6C63FF"
+              name={validateExpiry(expiry) ? "check-circle" : "close-circle"}
+              size={18}
+              color={validateExpiry(expiry) ? "#10B981" : "#EF4444"}
             />
           )}
-        </TouchableOpacity>
-      ))}
+        </View>
+        {!!expiryError && (
+          <View style={styles.errorRow}>
+            <MaterialCommunityIcons
+              name="alert-circle-outline"
+              size={13}
+              color="#EF4444"
+            />
+            <Text style={styles.errorText}> {expiryError}</Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Quantity in Stock</Text>
+        <View
+          style={[
+            styles.inputContainer,
+            focusedField === "qty" && styles.inputFocused,
+          ]}
+        >
+          <MaterialCommunityIcons
+            name="counter"
+            size={18}
+            color={focusedField === "qty" ? "#0EA5B0" : "#A0AEC0"}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. 30 tablets"
+            placeholderTextColor="#CBD5E0"
+            value={quantity}
+            onChangeText={setQuantity}
+            keyboardType="numeric"
+            onFocus={() => setFocusedField("qty")}
+            onBlur={() => setFocusedField(null)}
+          />
+        </View>
+      </View>
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Notes (optional)</Text>
+        <View
+          style={[
+            styles.inputContainer,
+            styles.textArea,
+            focusedField === "notes" && styles.inputFocused,
+          ]}
+        >
+          <TextInput
+            style={[styles.input, { textAlignVertical: "top", marginLeft: 0 }]}
+            placeholder="e.g. Take after food, with a full glass of water"
+            placeholderTextColor="#CBD5E0"
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            numberOfLines={3}
+            onFocus={() => setFocusedField("notes")}
+            onBlur={() => setFocusedField(null)}
+          />
+        </View>
+      </View>
     </>
   );
 
+  // ─── Step 2 ───────────────────────────────────────────────────────────────
+  const renderStep2 = () => (
+    <>
+      <StepHeader
+        title="Dose Type & Frequency"
+        subtitle="Select how this medicine is taken and how often."
+      />
+      <Text style={styles.subSectionLabel}>Dose Type</Text>
+      <View style={styles.doseTypeGrid}>
+        {DOSE_TYPES.map((dt) => {
+          const isActive = selectedDoseType?.label === dt.label;
+          return (
+            <TouchableOpacity
+              key={dt.label}
+              style={[styles.doseTypeBtn, isActive && styles.doseTypeBtnActive]}
+              onPress={() => setSelectedDoseType(dt)}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons
+                name={dt.icon}
+                size={24}
+                color={isActive ? "#0EA5B0" : "#A0AEC0"}
+              />
+              <Text
+                style={[
+                  styles.doseTypeLbl,
+                  isActive && styles.doseTypeLblActive,
+                ]}
+              >
+                {dt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <Text style={[styles.subSectionLabel, { marginTop: 24 }]}>Frequency</Text>
+      {DOSE_FREQUENCIES.map((freq) => {
+        const isActive = selectedFrequency?.label === freq.label;
+        return (
+          <TouchableOpacity
+            key={freq.label}
+            style={[styles.freqBtn, isActive && styles.freqBtnActive]}
+            onPress={() => handleFrequencySelect(freq)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.freqLeft}>
+              <View
+                style={[
+                  styles.freqDot,
+                  { backgroundColor: isActive ? "#0EA5B0" : "#E2E8F0" },
+                ]}
+              />
+              <Text
+                style={[styles.freqLabel, isActive && styles.freqLabelActive]}
+              >
+                {freq.label}
+              </Text>
+            </View>
+            {isActive && (
+              <MaterialCommunityIcons
+                name="check-circle"
+                size={20}
+                color="#0EA5B0"
+              />
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </>
+  );
+
+  // ─── Step 3 ───────────────────────────────────────────────────────────────
   const renderStep3 = () => (
     <>
-      <Text style={styles.stepTitle}>Dose Timings</Text>
-      <Text style={styles.stepSubtitle}>
-        Customize the time for each dose. Reminders activate daily at these
-        times.
-      </Text>
-
-      {/* Info banner inside Expo Go */}
+      <StepHeader
+        title="Dose Timings"
+        subtitle="Tap each dose to pick a time. Reminders fire daily at these times."
+      />
       {isExpoGo && (
-        <View style={styles.expoGoNote}>
+        <View style={styles.infoBanner}>
           <MaterialCommunityIcons
             name="information-outline"
             size={16}
-            color="#48CAE4"
+            color="#0EA5B0"
           />
-          <Text style={styles.expoGoNoteText}>
-            {"  "}Push reminders need a{" "}
+          <Text style={styles.infoBannerText}>
+            {"  "}Push reminders require a{" "}
             <Text style={{ fontWeight: "800" }}>development build</Text>.{" "}
             Timings are saved and will activate once you switch.
           </Text>
         </View>
       )}
-
       {times.length === 0 ? (
         <View style={styles.emptyTimings}>
-          <MaterialCommunityIcons
-            name="clock-outline"
-            size={40}
-            color="#3D4470"
-          />
+          <View style={styles.emptyTimingsIcon}>
+            <MaterialCommunityIcons
+              name="clock-outline"
+              size={36}
+              color="#A0AEC0"
+            />
+          </View>
+          <Text style={styles.emptyTimingsTitle}>No Fixed Schedule</Text>
           <Text style={styles.emptyTimingsText}>
-            No fixed timings for this frequency.
+            Take this medicine as needed.
           </Text>
         </View>
       ) : (
-        times.map((time, i) => (
-          <View key={i} style={styles.timingRow}>
-            <View style={styles.timingDot}>
-              <Text style={styles.timingDotText}>{i + 1}</Text>
-            </View>
-            <Text style={styles.timingLabel}>Dose {i + 1}</Text>
-            <View style={styles.timingInputWrap}>
-              <MaterialCommunityIcons
-                name="clock-outline"
-                size={16}
-                color="#6C63FF"
-              />
-              <TextInput
-                style={styles.timingInput}
-                value={time}
-                onChangeText={(v) => updateTime(i, v)}
-                placeholder="08:00 AM"
-                placeholderTextColor="#9A9BB0"
-              />
-            </View>
-          </View>
-        ))
+        <View style={styles.timingsCard}>
+          {times.map((time, i) => (
+            <TouchableOpacity
+              key={i}
+              style={[
+                styles.timingRow,
+                i < times.length - 1 && styles.timingRowBorder,
+              ]}
+              onPress={() => openTimePicker(i)}
+              activeOpacity={0.75}
+            >
+              <View style={styles.timingIndex}>
+                <Text style={styles.timingIndexText}>{i + 1}</Text>
+              </View>
+              <View style={styles.timingLabelWrap}>
+                <Text style={styles.timingDoseLabel}>Dose {i + 1}</Text>
+                <Text style={styles.timingDoseSub}>Tap to change time</Text>
+              </View>
+              <View style={styles.timingDisplayChip}>
+                <MaterialCommunityIcons
+                  name="clock-outline"
+                  size={14}
+                  color="#0EA5B0"
+                />
+                <Text style={styles.timingDisplayText}>{time}</Text>
+                <MaterialCommunityIcons
+                  name="chevron-down"
+                  size={14}
+                  color="#A0AEC0"
+                />
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
       )}
-
       {!isExpoGo && times.length > 0 && (
         <View style={styles.notifNote}>
           <MaterialCommunityIcons
             name="bell-ring-outline"
-            size={18}
-            color="#FFB347"
+            size={16}
+            color="#F59E0B"
           />
           <Text style={styles.notifNoteText}>
-            {"  "}Push notifications will be sent at these times every day.
+            {"  "}Notifications include{" "}
+            <Text style={{ fontWeight: "800" }}>Mark as Taken</Text> and Ignore
+            actions.
           </Text>
         </View>
       )}
     </>
   );
 
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0F2C" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F7F9FC" />
 
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
         >
-          <MaterialCommunityIcons name="arrow-left" size={22} color="#9A9BB0" />
+          <MaterialCommunityIcons name="arrow-left" size={20} color="#4A5568" />
         </TouchableOpacity>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Log New Medicine</Text>
-          <Text style={styles.headerSub}>Step {step} of 3</Text>
+          <Text style={styles.headerSub}>
+            Step {step} of 3 — {STEP_LABELS[step - 1]}
+          </Text>
         </View>
       </View>
 
-      {/* Step dots */}
-      <View style={styles.stepIndicator}>
+      {/* Step Progress */}
+      <View style={styles.progressContainer}>
         {[1, 2, 3].map((s) => (
-          <View
-            key={s}
-            style={[styles.stepDot, step >= s && styles.stepDotActive]}
-          >
-            {step > s ? (
-              <MaterialCommunityIcons name="check" size={12} color="#fff" />
-            ) : (
-              <Text style={[styles.stepNum, step >= s && styles.stepNumActive]}>
-                {s}
+          <React.Fragment key={s}>
+            <View style={styles.stepItem}>
+              <View
+                style={[
+                  styles.stepDot,
+                  step > s && styles.stepDotDone,
+                  step === s && styles.stepDotActive,
+                ]}
+              >
+                {step > s ? (
+                  <MaterialCommunityIcons name="check" size={14} color="#fff" />
+                ) : (
+                  <Text
+                    style={[styles.stepNum, step >= s && styles.stepNumActive]}
+                  >
+                    {s}
+                  </Text>
+                )}
+              </View>
+              <Text
+                style={[styles.stepLabel, step === s && styles.stepLabelActive]}
+              >
+                {STEP_LABELS[s - 1]}
               </Text>
+            </View>
+            {s < 3 && (
+              <View
+                style={[
+                  styles.progressLine,
+                  step > s && styles.progressLineActive,
+                ]}
+              />
             )}
-          </View>
+          </React.Fragment>
         ))}
       </View>
 
+      {/* Scroll Content */}
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.card}>
           {step === 1 && renderStep1()}
@@ -561,16 +1265,18 @@ const LogNewMedicine = ({ navigation }) => {
         </View>
       </ScrollView>
 
+      {/* Bottom Nav */}
       <View style={styles.bottomNav}>
         {step > 1 && (
           <TouchableOpacity
             style={styles.prevBtn}
             onPress={() => setStep(step - 1)}
+            activeOpacity={0.8}
           >
             <MaterialCommunityIcons
               name="arrow-left"
-              size={20}
-              color="#9A9BB0"
+              size={18}
+              color="#4A5568"
             />
             <Text style={styles.prevBtnText}> Back</Text>
           </TouchableOpacity>
@@ -578,215 +1284,296 @@ const LogNewMedicine = ({ navigation }) => {
         {step < 3 ? (
           <TouchableOpacity
             style={[styles.nextBtn, step === 1 && { flex: 1 }]}
-            onPress={() => setStep(step + 1)}
+            onPress={handleNext}
+            activeOpacity={0.85}
           >
             <Text style={styles.nextBtnText}>Continue</Text>
-            <MaterialCommunityIcons name="arrow-right" size={20} color="#fff" />
+            <MaterialCommunityIcons name="arrow-right" size={18} color="#fff" />
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
             style={[styles.nextBtn, { flex: 1 }]}
             onPress={handleSave}
             disabled={loading}
+            activeOpacity={0.85}
           >
             <MaterialCommunityIcons
               name={loading ? "loading" : "check"}
-              size={20}
+              size={18}
               color="#fff"
             />
             <Text style={styles.nextBtnText}>
-              {" "}
               {loading ? "Saving..." : "Save Medicine"}
             </Text>
           </TouchableOpacity>
         )}
       </View>
+
+      <TimePicker
+        visible={timePickerVisible}
+        initialTime={
+          editingTimeIndex !== null ? times[editingTimeIndex] : "08:00 AM"
+        }
+        onConfirm={handleTimeConfirm}
+        onClose={() => {
+          setTimePickerVisible(false);
+          setEditingTimeIndex(null);
+        }}
+      />
+      <AppModal
+        visible={modal.visible}
+        icon={modal.icon}
+        iconColor={modal.iconColor}
+        iconBg={modal.iconBg}
+        title={modal.title}
+        message={modal.message}
+        buttons={modal.buttons}
+        onDismiss={hideModal}
+      />
     </SafeAreaView>
   );
 };
 
 export default LogNewMedicine;
 
+// ─── Styles (unchanged) ───────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0A0F2C" },
-
+  root: { flex: 1, backgroundColor: "#F7F9FC" },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 12,
-    gap: 14,
+    paddingBottom: 8,
+    gap: 16,
   },
-
   backBtn: {
     width: 42,
     height: 42,
-    borderRadius: 13,
-    backgroundColor: "#13193D",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
   },
-
-  headerTitle: { fontSize: 20, fontWeight: "800", color: "#FFFFFF" },
-  headerSub: { fontSize: 12, color: "#9A9BB0" },
-
-  stepIndicator: {
+  headerTitle: { fontSize: 20, fontWeight: "800", color: "#1A2235" },
+  headerSub: { fontSize: 12, color: "#A0AEC0", marginTop: 1 },
+  progressContainer: {
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 20,
-    paddingHorizontal: 22,
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingVertical: 16,
   },
-
+  stepItem: { alignItems: "center", gap: 6 },
   stepDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#13193D",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#1E2550",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
   },
-  stepDotActive: { backgroundColor: "#6C63FF", borderColor: "#6C63FF" },
-  stepNum: { fontSize: 13, fontWeight: "700", color: "#9A9BB0" },
+  stepDotActive: {
+    borderColor: "#0EA5B0",
+    backgroundColor: "#0EA5B0",
+    shadowColor: "#0EA5B0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  stepDotDone: { borderColor: "#0EA5B0", backgroundColor: "#0EA5B0" },
+  stepNum: { fontSize: 13, fontWeight: "700", color: "#A0AEC0" },
   stepNumActive: { color: "#fff" },
-
-  scroll: { paddingHorizontal: 22, paddingBottom: 110 },
-
-  card: {
-    backgroundColor: "#13193D",
-    borderRadius: 24,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: "#1E2550",
-  },
-
-  stepTitle: {
-    fontSize: 16,
+  stepLabel: {
+    fontSize: 10,
     fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 14,
+    color: "#CBD5E0",
+    letterSpacing: 0.5,
   },
-  stepSubtitle: {
-    fontSize: 13,
-    color: "#9A9BB0",
-    marginBottom: 18,
-    lineHeight: 19,
+  stepLabelActive: { color: "#0EA5B0" },
+  progressLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: "#E2E8F0",
+    marginHorizontal: 6,
+    marginBottom: 20,
   },
-
-  inputLabel: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  labelText: { fontSize: 13, color: "#9A9BB0", fontWeight: "600" },
-
+  progressLineActive: { backgroundColor: "#0EA5B0" },
+  scroll: { paddingHorizontal: 24, paddingBottom: 110 },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  fieldGroup: { marginBottom: 4 },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#4A5568",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    textTransform: "uppercase",
+  },
+  subSectionLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#A0AEC0",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 12,
+  },
   inputContainer: {
-    backgroundColor: "#0D1235",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F7F9FC",
     borderRadius: 14,
     paddingHorizontal: 16,
-    marginBottom: 18,
+    marginBottom: 20,
     height: 52,
-    borderWidth: 1,
-    borderColor: "#1E2550",
-    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
   },
-  textArea: { height: 90, paddingTop: 12 },
-  inputFocused: { borderColor: "#6C63FF" },
-  input: { fontSize: 15, color: "#FFFFFF", flex: 1 },
-
-  doseTypeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-
+  textArea: { height: 88, paddingTop: 14, alignItems: "flex-start" },
+  inputFocused: { borderColor: "#0EA5B0", backgroundColor: "#F0FAFB" },
+  inputError: { borderColor: "#EF4444", backgroundColor: "#FFF5F5" },
+  input: { flex: 1, marginLeft: 10, fontSize: 15, color: "#1A2235" },
+  errorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: -14,
+    marginBottom: 14,
+    paddingHorizontal: 4,
+  },
+  errorText: { fontSize: 12, color: "#EF4444", fontWeight: "500" },
+  doseTypeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 4,
+  },
   doseTypeBtn: {
     width: "22%",
     aspectRatio: 1,
-    backgroundColor: "#0D1235",
-    borderRadius: 14,
+    backgroundColor: "#F7F9FC",
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#1E2550",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
     gap: 6,
   },
-  doseTypeBtnActive: { borderColor: "#6C63FF", backgroundColor: "#6C63FF18" },
-  doseTypeLbl: { fontSize: 10, color: "#9A9BB0", textAlign: "center" },
-  doseTypeLblActive: { color: "#6C63FF", fontWeight: "700" },
-
+  doseTypeBtnActive: { borderColor: "#0EA5B0", backgroundColor: "#F0FAFB" },
+  doseTypeLbl: {
+    fontSize: 10,
+    color: "#A0AEC0",
+    textAlign: "center",
+    fontWeight: "600",
+  },
+  doseTypeLblActive: { color: "#0EA5B0", fontWeight: "700" },
   freqBtn: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#0D1235",
+    backgroundColor: "#F7F9FC",
     borderRadius: 14,
     paddingHorizontal: 16,
-    height: 50,
+    height: 52,
     marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#1E2550",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
   },
-  freqBtnActive: { borderColor: "#6C63FF", backgroundColor: "#6C63FF12" },
-  freqLabel: { fontSize: 14, color: "#9A9BB0" },
-  freqLabelActive: { color: "#FFFFFF", fontWeight: "600" },
-
-  expoGoNote: {
+  freqBtnActive: { borderColor: "#0EA5B0", backgroundColor: "#F0FAFB" },
+  freqLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  freqDot: { width: 8, height: 8, borderRadius: 4 },
+  freqLabel: { fontSize: 14, color: "#718096", fontWeight: "500" },
+  freqLabelActive: { color: "#1A2235", fontWeight: "700" },
+  infoBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "#48CAE412",
+    backgroundColor: "#F0FAFB",
     borderRadius: 14,
     padding: 14,
-    marginBottom: 18,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#48CAE430",
+    borderColor: "#BAE6EA",
   },
-  expoGoNoteText: { fontSize: 13, color: "#48CAE4", flex: 1, lineHeight: 19 },
-
-  timingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 14,
-    gap: 12,
-  },
-
-  timingDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#6C63FF",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  timingDotText: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  timingLabel: { flex: 1, fontSize: 14, color: "#FFFFFF", fontWeight: "600" },
-
-  timingInputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0D1235",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 44,
-    borderWidth: 1,
-    borderColor: "#1E2550",
-    gap: 6,
-  },
-  timingInput: { fontSize: 14, color: "#FFFFFF", width: 90 },
-
-  emptyTimings: { alignItems: "center", paddingVertical: 30, gap: 10 },
-  emptyTimingsText: { fontSize: 14, color: "#3D4470" },
-
+  infoBannerText: { fontSize: 13, color: "#0EA5B0", flex: 1, lineHeight: 19 },
   notifNote: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFB34712",
+    alignItems: "flex-start",
+    backgroundColor: "#FFFBEB",
     borderRadius: 14,
     padding: 14,
     marginTop: 16,
     borderWidth: 1,
-    borderColor: "#FFB34730",
+    borderColor: "#FDE68A",
   },
-  notifNoteText: { fontSize: 13, color: "#FFB347", flex: 1 },
-
+  notifNoteText: { fontSize: 13, color: "#92400E", flex: 1, lineHeight: 19 },
+  emptyTimings: { alignItems: "center", paddingVertical: 40, gap: 12 },
+  emptyTimingsIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: "#F7F9FC",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  emptyTimingsTitle: { fontSize: 16, fontWeight: "700", color: "#4A5568" },
+  emptyTimingsText: { fontSize: 13, color: "#A0AEC0" },
+  timingsCard: {
+    backgroundColor: "#F7F9FC",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+  },
+  timingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  timingRowBorder: { borderBottomWidth: 1, borderBottomColor: "#E2E8F0" },
+  timingIndex: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: "#0EA5B0",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  timingIndexText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  timingLabelWrap: { flex: 1 },
+  timingDoseLabel: { fontSize: 14, color: "#1A2235", fontWeight: "700" },
+  timingDoseSub: { fontSize: 11, color: "#A0AEC0", marginTop: 2 },
+  timingDisplayChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1.5,
+    borderColor: "#BAE6EA",
+    gap: 6,
+  },
+  timingDisplayText: { fontSize: 14, color: "#0EA5B0", fontWeight: "700" },
   bottomNav: {
     position: "absolute",
     bottom: 0,
@@ -795,36 +1582,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     padding: 20,
-    backgroundColor: "#0A0F2C",
+    backgroundColor: "#F7F9FC",
     borderTopWidth: 1,
-    borderTopColor: "#1E2550",
+    borderTopColor: "#E2E8F0",
   },
-
   prevBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#13193D",
-    borderRadius: 14,
-    paddingHorizontal: 18,
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingHorizontal: 20,
     height: 54,
-    borderWidth: 1,
-    borderColor: "#1E2550",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    gap: 4,
   },
-  prevBtnText: { color: "#9A9BB0", fontWeight: "600", fontSize: 15 },
-
+  prevBtnText: { color: "#4A5568", fontWeight: "600", fontSize: 15 },
   nextBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#6C63FF",
-    borderRadius: 14,
+    backgroundColor: "#0EA5B0",
+    borderRadius: 16,
     height: 54,
     flex: 1,
-    shadowColor: "#6C63FF",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+    gap: 8,
+    shadowColor: "#0EA5B0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
   },
   nextBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
 });

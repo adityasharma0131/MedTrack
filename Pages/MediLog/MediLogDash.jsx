@@ -47,36 +47,41 @@ const MediLogDash = ({ navigation }) => {
     } catch (_) {}
   };
 
+  const adherence =
+    takenCount + pendingCount > 0
+      ? Math.round((takenCount / (takenCount + pendingCount)) * 100)
+      : 0;
+
   const options = [
     {
       icon: "plus-circle-outline",
       label: "Log New Medicine",
-      desc: "Add a new medicine with reminders",
+      desc: "Add a medicine with reminders",
       route: "LogNewMedicine",
-      color: "#6C63FF",
-      bg: "#6C63FF18",
+      color: "#0EA5B0",
+      bg: "#F0FAFB",
     },
     {
       icon: "clipboard-text-clock-outline",
       label: "Dose History",
-      desc: "Track your intake regularity",
+      desc: "Review your intake regularity",
       route: "History",
-      color: "#4ECDC4",
-      bg: "#4ECDC418",
+      color: "#5A7AF5",
+      bg: "#F0F4FF",
     },
     {
       icon: "pill-multiple",
       label: "Medicine Box",
-      desc: "All your current & past medicines",
+      desc: "All your current &amp; past medicines",
       route: "MedicineBox",
-      color: "#FF6B6B",
-      bg: "#FF6B6B18",
+      color: "#EF4444",
+      bg: "#FFF5F5",
     },
   ];
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0F2C" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F7F9FC" />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -90,8 +95,8 @@ const MediLogDash = ({ navigation }) => {
           >
             <MaterialCommunityIcons
               name="arrow-left"
-              size={22}
-              color="#9A9BB0"
+              size={20}
+              color="#4A5568"
             />
           </TouchableOpacity>
           <View>
@@ -100,78 +105,184 @@ const MediLogDash = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Today Stats */}
-        <View style={styles.statsCard}>
-          <View style={styles.statsCardHeader}>
-            <MaterialCommunityIcons
-              name="calendar-today"
-              size={18}
-              color="#6C63FF"
-            />
-            <Text style={styles.statsCardTitle}> Today's Overview</Text>
+        {/* Today's Overview */}
+        <View style={styles.overviewCard}>
+          <View style={styles.overviewHeader}>
+            <View style={styles.overviewHeaderLeft}>
+              <MaterialCommunityIcons
+                name="calendar-today"
+                size={16}
+                color="#0EA5B0"
+              />
+              <Text style={styles.overviewTitle}> Today's Overview</Text>
+            </View>
+            <Text style={styles.overviewDate}>
+              {new Date().toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })}
+            </Text>
           </View>
+
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: "#4ECDC4" }]}>
+              <View
+                style={[styles.statIconBox, { backgroundColor: "#ECFDF5" }]}
+              >
+                <MaterialCommunityIcons
+                  name="check-circle-outline"
+                  size={20}
+                  color="#10B981"
+                />
+              </View>
+              <Text style={[styles.statNum, { color: "#10B981" }]}>
                 {takenCount}
               </Text>
-              <Text style={styles.statLabel}>Doses Taken</Text>
+              <Text style={styles.statLabel}>Taken</Text>
             </View>
+
             <View style={styles.statDivider} />
+
             <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: "#FFB347" }]}>
+              <View
+                style={[styles.statIconBox, { backgroundColor: "#FFFBEB" }]}
+              >
+                <MaterialCommunityIcons
+                  name="clock-outline"
+                  size={20}
+                  color="#F59E0B"
+                />
+              </View>
+              <Text style={[styles.statNum, { color: "#F59E0B" }]}>
                 {pendingCount}
               </Text>
               <Text style={styles.statLabel}>Pending</Text>
             </View>
+
             <View style={styles.statDivider} />
+
             <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: "#FF6B6B" }]}>
-                {takenCount + pendingCount > 0
-                  ? Math.round((takenCount / (takenCount + pendingCount)) * 100)
-                  : 0}
-                %
+              <View
+                style={[
+                  styles.statIconBox,
+                  {
+                    backgroundColor:
+                      adherence >= 80
+                        ? "#ECFDF5"
+                        : adherence >= 50
+                          ? "#FFFBEB"
+                          : "#FFF5F5",
+                  },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="chart-arc"
+                  size={20}
+                  color={
+                    adherence >= 80
+                      ? "#10B981"
+                      : adherence >= 50
+                        ? "#F59E0B"
+                        : "#EF4444"
+                  }
+                />
+              </View>
+              <Text
+                style={[
+                  styles.statNum,
+                  {
+                    color:
+                      adherence >= 80
+                        ? "#10B981"
+                        : adherence >= 50
+                          ? "#F59E0B"
+                          : "#EF4444",
+                  },
+                ]}
+              >
+                {adherence}%
               </Text>
               <Text style={styles.statLabel}>Adherence</Text>
             </View>
           </View>
-        </View>
 
-        {/* Next upcoming dose */}
-        {todayDoses.length > 0 && (
-          <View style={styles.upcomingCard}>
-            <Text style={styles.upcomingLabel}>UPCOMING DOSES</Text>
-            {todayDoses.map((dose, i) => (
-              <View key={i} style={styles.doseRow}>
+          {/* Adherence progress bar */}
+          {takenCount + pendingCount > 0 && (
+            <View style={styles.adherenceBar}>
+              <View style={styles.adherenceBarBg}>
                 <View
                   style={[
-                    styles.doseDot,
-                    { backgroundColor: dose.taken ? "#4ECDC4" : "#FFB347" },
+                    styles.adherenceBarFill,
+                    {
+                      width: `${adherence}%`,
+                      backgroundColor:
+                        adherence >= 80
+                          ? "#10B981"
+                          : adherence >= 50
+                            ? "#F59E0B"
+                            : "#EF4444",
+                    },
                   ]}
                 />
-                <Text style={styles.doseName}>{dose.medicineName}</Text>
-                <Text style={styles.doseTime}>{dose.time}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Upcoming Doses */}
+        {todayDoses.length > 0 && (
+          <View style={styles.upcomingSection}>
+            <Text style={styles.sectionLabel}>UPCOMING DOSES</Text>
+            <View style={styles.upcomingCard}>
+              {todayDoses.map((dose, i) => (
                 <View
+                  key={i}
                   style={[
-                    styles.doseBadge,
-                    { backgroundColor: dose.taken ? "#4ECDC415" : "#FFB34715" },
+                    styles.doseRow,
+                    i < todayDoses.length - 1 && styles.doseRowBorder,
                   ]}
                 >
-                  <Text
+                  <View
                     style={[
-                      styles.doseBadgeText,
-                      { color: dose.taken ? "#4ECDC4" : "#FFB347" },
+                      styles.doseStatus,
+                      { backgroundColor: dose.taken ? "#ECFDF5" : "#FFFBEB" },
                     ]}
                   >
-                    {dose.taken ? "Taken" : "Pending"}
-                  </Text>
+                    <MaterialCommunityIcons
+                      name={dose.taken ? "check" : "clock-outline"}
+                      size={14}
+                      color={dose.taken ? "#10B981" : "#F59E0B"}
+                    />
+                  </View>
+                  <View style={styles.doseInfo}>
+                    <Text style={styles.doseName}>{dose.medicineName}</Text>
+                    <Text style={styles.doseTime}>{dose.time}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.doseBadge,
+                      {
+                        backgroundColor: dose.taken ? "#ECFDF5" : "#FFFBEB",
+                        borderColor: dose.taken ? "#A7F3D0" : "#FDE68A",
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.doseBadgeText,
+                        { color: dose.taken ? "#10B981" : "#F59E0B" },
+                      ]}
+                    >
+                      {dose.taken ? "Taken" : "Pending"}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
         )}
 
-        {/* Options */}
+        {/* Quick Actions */}
         <Text style={styles.sectionLabel}>QUICK ACTIONS</Text>
         {options.map((opt) => (
           <TouchableOpacity
@@ -180,10 +291,10 @@ const MediLogDash = ({ navigation }) => {
             onPress={() => navigation.navigate(opt.route)}
             activeOpacity={0.85}
           >
-            <View style={[styles.cardIcon, { backgroundColor: opt.bg }]}>
+            <View style={[styles.cardIconWrap, { backgroundColor: opt.bg }]}>
               <MaterialCommunityIcons
                 name={opt.icon}
-                size={30}
+                size={26}
                 color={opt.color}
               />
             </View>
@@ -191,11 +302,13 @@ const MediLogDash = ({ navigation }) => {
               <Text style={styles.cardTitle}>{opt.label}</Text>
               <Text style={styles.cardDesc}>{opt.desc}</Text>
             </View>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={22}
-              color="#3D4470"
-            />
+            <View style={styles.chevronWrap}>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={18}
+                color="#A0AEC0"
+              />
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -206,112 +319,264 @@ const MediLogDash = ({ navigation }) => {
 export default MediLogDash;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0A0F2C" },
-  scroll: { paddingHorizontal: 22, paddingBottom: 40 },
+  root: {
+    flex: 1,
+    backgroundColor: "#F7F9FC",
+  },
+
+  scroll: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
 
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: 16,
+    paddingTop: 20,
     marginBottom: 24,
-    gap: 14,
+    gap: 16,
   },
 
   backBtn: {
     width: 42,
     height: 42,
-    borderRadius: 13,
-    backgroundColor: "#13193D",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
   },
 
-  title: { fontSize: 22, fontWeight: "800", color: "#FFFFFF" },
-  subtitle: { fontSize: 13, color: "#9A9BB0" },
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1A2235",
+  },
 
-  statsCard: {
-    backgroundColor: "#13193D",
-    borderRadius: 20,
+  subtitle: {
+    fontSize: 13,
+    color: "#A0AEC0",
+    marginTop: 1,
+  },
+
+  overviewCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
     padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#1E2550",
-  },
-
-  statsCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  statsCardTitle: { fontSize: 14, fontWeight: "700", color: "#FFFFFF" },
-
-  statsRow: { flexDirection: "row", justifyContent: "space-around" },
-
-  statItem: { alignItems: "center" },
-  statNum: { fontSize: 28, fontWeight: "800" },
-  statLabel: { fontSize: 12, color: "#9A9BB0", marginTop: 4 },
-  statDivider: { width: 1, backgroundColor: "#1E2550" },
-
-  upcomingCard: {
-    backgroundColor: "#13193D",
-    borderRadius: 20,
-    padding: 18,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
   },
 
-  upcomingLabel: {
-    fontSize: 11,
+  overviewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+
+  overviewHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  overviewTitle: {
+    fontSize: 15,
     fontWeight: "700",
-    color: "#9A9BB0",
-    letterSpacing: 1.2,
-    marginBottom: 14,
+    color: "#1A2235",
   },
 
-  doseRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  doseDot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
-  doseName: { flex: 1, fontSize: 14, color: "#FFFFFF", fontWeight: "600" },
-  doseTime: { fontSize: 13, color: "#9A9BB0", marginRight: 10 },
-  doseBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  doseBadgeText: { fontSize: 11, fontWeight: "700" },
+  overviewDate: {
+    fontSize: 13,
+    color: "#A0AEC0",
+    fontWeight: "600",
+  },
+
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 16,
+  },
+
+  statItem: {
+    alignItems: "center",
+    gap: 6,
+  },
+
+  statIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+
+  statNum: {
+    fontSize: 26,
+    fontWeight: "800",
+  },
+
+  statLabel: {
+    fontSize: 12,
+    color: "#A0AEC0",
+    fontWeight: "600",
+  },
+
+  statDivider: {
+    width: 1,
+    backgroundColor: "#EDF2F7",
+    alignSelf: "stretch",
+    marginVertical: 8,
+  },
+
+  adherenceBar: {
+    marginTop: 4,
+  },
+
+  adherenceBarBg: {
+    height: 6,
+    backgroundColor: "#EDF2F7",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+
+  adherenceBarFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+
+  upcomingSection: {
+    marginBottom: 24,
+  },
 
   sectionLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#9A9BB0",
-    letterSpacing: 1.2,
-    marginBottom: 14,
+    color: "#A0AEC0",
+    letterSpacing: 1.5,
+    marginBottom: 12,
+  },
+
+  upcomingCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+
+  doseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+
+  doseRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F4F8",
+  },
+
+  doseStatus: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+
+  doseInfo: {
+    flex: 1,
+  },
+
+  doseName: {
+    fontSize: 14,
+    color: "#1A2235",
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+
+  doseTime: {
+    fontSize: 12,
+    color: "#A0AEC0",
+    fontWeight: "500",
+  },
+
+  doseBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+
+  doseBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
   },
 
   card: {
-    backgroundColor: "#13193D",
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 18,
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
 
-  cardIcon: {
-    width: 58,
-    height: 58,
+  cardIconWrap: {
+    width: 54,
+    height: 54,
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 16,
+    flexShrink: 0,
   },
 
-  cardContent: { flex: 1 },
+  cardContent: {
+    flex: 1,
+  },
+
   cardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: "#1A2235",
     marginBottom: 3,
   },
-  cardDesc: { fontSize: 12, color: "#9A9BB0" },
+
+  cardDesc: {
+    fontSize: 12,
+    color: "#718096",
+    lineHeight: 17,
+  },
+
+  chevronWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#F7F9FC",
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });

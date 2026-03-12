@@ -26,14 +26,14 @@ const DOSE_TYPE_ICONS = {
 };
 
 const DOSE_COLORS = {
-  Tablet: "#6C63FF",
-  Capsule: "#4ECDC4",
-  Syrup: "#FFB347",
-  Injection: "#FF6B6B",
-  Drops: "#48CAE4",
-  Inhaler: "#95D5B2",
-  Patch: "#E9C46A",
-  Cream: "#F4A261",
+  Tablet: "#0EA5B0",
+  Capsule: "#5A7AF5",
+  Syrup: "#F59E0B",
+  Injection: "#EF4444",
+  Drops: "#06B6D4",
+  Inhaler: "#10B981",
+  Patch: "#8B5CF6",
+  Cream: "#F97316",
 };
 
 const isExpiryClose = (expiryStr) => {
@@ -62,7 +62,7 @@ const isExpired = (expiryStr) => {
 const MedicineBox = ({ navigation }) => {
   const [medicines, setMedicines] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState("active"); // active | inactive
+  const [activeTab, setActiveTab] = useState("active");
   const [stats, setStats] = useState({
     total: 0,
     lowStock: 0,
@@ -98,7 +98,6 @@ const MedicineBox = ({ navigation }) => {
         expiringSoon: expiringSoon.length,
       });
 
-      // Auto alerts for low stock
       for (const med of lowStock) {
         const alerted = await AsyncStorage.getItem(`lowstock_alert_${med.id}`);
         if (!alerted) {
@@ -162,8 +161,6 @@ const MedicineBox = ({ navigation }) => {
                 `medicines_${userEmail}`,
                 JSON.stringify(meds),
               );
-
-              // Remove from history
               const histRaw = await AsyncStorage.getItem(
                 `history_${userEmail}`,
               );
@@ -174,7 +171,6 @@ const MedicineBox = ({ navigation }) => {
                 `history_${userEmail}`,
                 JSON.stringify(history),
               );
-
               loadMedicines();
             } catch (_) {}
           },
@@ -194,7 +190,7 @@ const MedicineBox = ({ navigation }) => {
   );
 
   const renderCard = ({ item: med }) => {
-    const color = DOSE_COLORS[med.doseType] || "#6C63FF";
+    const color = DOSE_COLORS[med.doseType] || "#0EA5B0";
     const icon = DOSE_TYPE_ICONS[med.doseType] || "pill";
     const expired = isExpired(med.expiry);
     const expiring = isExpiryClose(med.expiry);
@@ -208,21 +204,27 @@ const MedicineBox = ({ navigation }) => {
       <View style={[styles.card, expired && styles.cardExpired]}>
         {/* Top Row */}
         <View style={styles.cardTop}>
-          <View style={[styles.iconWrap, { backgroundColor: color + "18" }]}>
-            <MaterialCommunityIcons name={icon} size={28} color={color} />
+          <View style={[styles.iconWrap, { backgroundColor: color + "15" }]}>
+            <MaterialCommunityIcons name={icon} size={26} color={color} />
           </View>
-
           <View style={styles.cardInfo}>
             <Text style={styles.medName}>{med.name}</Text>
-            <Text style={styles.medMeta}>
-              {med.doseType} · {med.frequency}
-            </Text>
+            <View style={styles.medMetaRow}>
+              <View
+                style={[styles.medMetaBadge, { backgroundColor: color + "12" }]}
+              >
+                <Text style={[styles.medMetaBadgeText, { color }]}>
+                  {med.doseType}
+                </Text>
+              </View>
+              <Text style={styles.medFreq}>{med.frequency}</Text>
+            </View>
           </View>
-
           <View style={styles.cardActions}>
             <TouchableOpacity
               onPress={() => toggleActive(med)}
               style={styles.actionBtn}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             >
               <MaterialCommunityIcons
                 name={
@@ -230,91 +232,108 @@ const MedicineBox = ({ navigation }) => {
                     ? "pause-circle-outline"
                     : "play-circle-outline"
                 }
-                size={22}
-                color="#9A9BB0"
+                size={20}
+                color="#A0AEC0"
               />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => deleteMedicine(med)}
-              style={styles.actionBtn}
+              style={[styles.actionBtn, styles.actionBtnDanger]}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             >
               <MaterialCommunityIcons
                 name="delete-outline"
-                size={22}
-                color="#FF6B6B"
+                size={20}
+                color="#EF4444"
               />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Dose Timings */}
-        <View style={styles.timingsRow}>
-          {(med.times || []).map((t, i) => (
-            <View
-              key={i}
-              style={[styles.timeChip, { backgroundColor: color + "15" }]}
-            >
-              <MaterialCommunityIcons
-                name="clock-outline"
-                size={11}
-                color={color}
-              />
-              <Text style={[styles.timeChipText, { color }]}> {t}</Text>
-            </View>
-          ))}
-        </View>
+        {(med.times || []).length > 0 && (
+          <View style={styles.timingsRow}>
+            {med.times.map((t, i) => (
+              <View
+                key={i}
+                style={[styles.timeChip, { backgroundColor: color + "12" }]}
+              >
+                <MaterialCommunityIcons
+                  name="clock-outline"
+                  size={11}
+                  color={color}
+                />
+                <Text style={[styles.timeChipText, { color }]}>{t}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
-        {/* Stock bar */}
-        <View style={styles.stockRow}>
-          <Text style={styles.stockLabel}>
-            Stock: {med.remainingQuantity}/{med.quantity}
-          </Text>
-          <Text
-            style={[
-              styles.stockPct,
-              { color: lowStock ? "#FF6B6B" : "#4ECDC4" },
-            ]}
-          >
-            {stockPercent}%
-          </Text>
-        </View>
-        <View style={styles.stockBarBg}>
-          <View
-            style={[
-              styles.stockBarFill,
-              {
-                width: `${stockPercent}%`,
-                backgroundColor: lowStock ? "#FF6B6B" : "#4ECDC4",
-              },
-            ]}
-          />
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Stock section */}
+        <View style={styles.stockSection}>
+          <View style={styles.stockRow}>
+            <Text style={styles.stockLabel}>Stock remaining</Text>
+            <Text
+              style={[
+                styles.stockCount,
+                { color: lowStock ? "#EF4444" : "#10B981" },
+              ]}
+            >
+              {med.remainingQuantity} / {med.quantity}
+            </Text>
+          </View>
+          <View style={styles.stockBarBg}>
+            <View
+              style={[
+                styles.stockBarFill,
+                {
+                  width: `${stockPercent}%`,
+                  backgroundColor: lowStock ? "#EF4444" : "#10B981",
+                },
+              ]}
+            />
+          </View>
+          {lowStock && !expired && (
+            <View style={styles.alertBadge}>
+              <MaterialCommunityIcons
+                name="alert-circle-outline"
+                size={13}
+                color="#EF4444"
+              />
+              <Text style={styles.alertBadgeText}>
+                {" "}
+                Running low — please reorder
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Expiry Row */}
         <View style={styles.expiryRow}>
           <MaterialCommunityIcons
             name={
-              expired ? "alert-circle" : expiring ? "alert" : "check-circle"
+              expired
+                ? "alert-circle"
+                : expiring
+                  ? "alert"
+                  : "check-circle-outline"
             }
             size={14}
-            color={expired ? "#FF6B6B" : expiring ? "#FFB347" : "#4ECDC4"}
+            color={expired ? "#EF4444" : expiring ? "#F59E0B" : "#10B981"}
           />
           <Text
             style={[
               styles.expiryText,
-              { color: expired ? "#FF6B6B" : expiring ? "#FFB347" : "#9A9BB0" },
+              { color: expired ? "#EF4444" : expiring ? "#F59E0B" : "#A0AEC0" },
             ]}
           >
             {" "}
-            Exp: {med.expiry}
-            {expired ? "  · EXPIRED" : expiring ? "  · Expiring Soon" : ""}
+            Expires: {med.expiry}
+            {expired ? " · EXPIRED" : expiring ? " · Expiring soon" : ""}
           </Text>
-
-          {lowStock && !expired && (
-            <View style={styles.alertBadge}>
-              <Text style={styles.alertBadgeText}>⚠️ Order Now</Text>
-            </View>
-          )}
         </View>
       </View>
     );
@@ -322,7 +341,7 @@ const MedicineBox = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0F2C" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F7F9FC" />
 
       {/* Header */}
       <View style={styles.header}>
@@ -330,36 +349,39 @@ const MedicineBox = ({ navigation }) => {
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
         >
-          <MaterialCommunityIcons name="arrow-left" size={22} color="#9A9BB0" />
+          <MaterialCommunityIcons name="arrow-left" size={20} color="#4A5568" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Medicine Box</Text>
-          <Text style={styles.subtitle}>All your current & past medicines</Text>
+          <Text style={styles.subtitle}>
+            All your current &amp; past medicines
+          </Text>
         </View>
         <TouchableOpacity
           style={styles.addBtn}
           onPress={() => navigation.navigate("LogNewMedicine")}
+          activeOpacity={0.85}
         >
-          <MaterialCommunityIcons name="plus" size={22} color="#fff" />
+          <MaterialCommunityIcons name="plus" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
       {/* Stats */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={[styles.statNum, { color: "#6C63FF" }]}>
+          <Text style={[styles.statNum, { color: "#0EA5B0" }]}>
             {stats.total}
           </Text>
           <Text style={styles.statLabel}>Active</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={[styles.statNum, { color: "#FF6B6B" }]}>
+          <Text style={[styles.statNum, { color: "#EF4444" }]}>
             {stats.lowStock}
           </Text>
           <Text style={styles.statLabel}>Low Stock</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={[styles.statNum, { color: "#FFB347" }]}>
+          <Text style={[styles.statNum, { color: "#F59E0B" }]}>
             {stats.expiringSoon}
           </Text>
           <Text style={styles.statLabel}>Expiring</Text>
@@ -371,6 +393,7 @@ const MedicineBox = ({ navigation }) => {
         <TouchableOpacity
           style={[styles.tab, activeTab === "active" && styles.tabActive]}
           onPress={() => setActiveTab("active")}
+          activeOpacity={0.8}
         >
           <Text
             style={[
@@ -384,6 +407,7 @@ const MedicineBox = ({ navigation }) => {
         <TouchableOpacity
           style={[styles.tab, activeTab === "inactive" && styles.tabActive]}
           onPress={() => setActiveTab("inactive")}
+          activeOpacity={0.8}
         >
           <Text
             style={[
@@ -405,28 +429,32 @@ const MedicineBox = ({ navigation }) => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#6C63FF"
+            tintColor="#0EA5B0"
           />
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <MaterialCommunityIcons
-              name="pill-multiple"
-              size={60}
-              color="#1E2550"
-            />
-            <Text style={styles.emptyTitle}>No Medicines Here</Text>
+            <View style={styles.emptyIconWrap}>
+              <MaterialCommunityIcons
+                name="pill-multiple"
+                size={48}
+                color="#CBD5E0"
+              />
+            </View>
+            <Text style={styles.emptyTitle}>No Medicines Yet</Text>
             <Text style={styles.emptyText}>
               {activeTab === "active"
-                ? "Log a new medicine to get started."
-                : "No deactivated medicines."}
+                ? "Add your first medicine to start tracking."
+                : "No deactivated medicines found."}
             </Text>
             {activeTab === "active" && (
               <TouchableOpacity
                 style={styles.emptyBtn}
                 onPress={() => navigation.navigate("LogNewMedicine")}
+                activeOpacity={0.85}
               >
-                <Text style={styles.emptyBtnText}>+ Add Medicine</Text>
+                <MaterialCommunityIcons name="plus" size={16} color="#fff" />
+                <Text style={styles.emptyBtnText}> Add Medicine</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -439,63 +467,94 @@ const MedicineBox = ({ navigation }) => {
 export default MedicineBox;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0A0F2C" },
+  root: {
+    flex: 1,
+    backgroundColor: "#F7F9FC",
+  },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 12,
-    gap: 14,
+    gap: 16,
   },
 
   backBtn: {
     width: 42,
     height: 42,
-    borderRadius: 13,
-    backgroundColor: "#13193D",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
   },
 
-  title: { fontSize: 22, fontWeight: "800", color: "#FFFFFF" },
-  subtitle: { fontSize: 13, color: "#9A9BB0" },
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1A2235",
+  },
+
+  subtitle: {
+    fontSize: 13,
+    color: "#A0AEC0",
+    marginTop: 1,
+  },
 
   addBtn: {
     width: 42,
     height: 42,
-    borderRadius: 13,
-    backgroundColor: "#6C63FF",
+    borderRadius: 14,
+    backgroundColor: "#0EA5B0",
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#0EA5B0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
 
   statsRow: {
     flexDirection: "row",
     gap: 12,
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     marginBottom: 16,
   },
 
   statCard: {
     flex: 1,
-    backgroundColor: "#13193D",
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 14,
+    padding: 16,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
 
-  statNum: { fontSize: 24, fontWeight: "800" },
-  statLabel: { fontSize: 11, color: "#9A9BB0", marginTop: 3 },
+  statNum: {
+    fontSize: 26,
+    fontWeight: "800",
+  },
+
+  statLabel: {
+    fontSize: 11,
+    color: "#A0AEC0",
+    marginTop: 3,
+    fontWeight: "600",
+  },
 
   tabs: {
     flexDirection: "row",
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     marginBottom: 16,
     gap: 10,
   },
@@ -506,54 +565,120 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#13193D",
-    borderWidth: 1,
-    borderColor: "#1E2550",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
   },
 
-  tabActive: { backgroundColor: "#6C63FF", borderColor: "#6C63FF" },
-  tabText: { fontSize: 14, fontWeight: "600", color: "#9A9BB0" },
-  tabTextActive: { color: "#fff" },
+  tabActive: {
+    backgroundColor: "#0EA5B0",
+    borderColor: "#0EA5B0",
+  },
 
-  listContent: { paddingHorizontal: 22, paddingBottom: 40 },
+  tabText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#718096",
+  },
+
+  tabTextActive: {
+    color: "#fff",
+  },
+
+  listContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
 
   card: {
-    backgroundColor: "#13193D",
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 18,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
 
-  cardExpired: { opacity: 0.65, borderColor: "#FF6B6B30" },
+  cardExpired: {
+    opacity: 0.6,
+    borderColor: "#FECACA",
+    backgroundColor: "#FFF8F8",
+  },
 
-  cardTop: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  cardTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
 
   iconWrap: {
-    width: 52,
-    height: 52,
+    width: 50,
+    height: 50,
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    flexShrink: 0,
   },
 
-  cardInfo: { flex: 1 },
-  medName: { fontSize: 16, fontWeight: "700", color: "#FFFFFF" },
-  medMeta: { fontSize: 12, color: "#9A9BB0", marginTop: 2 },
+  cardInfo: {
+    flex: 1,
+  },
 
-  cardActions: { flexDirection: "row", gap: 4 },
+  medName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1A2235",
+    marginBottom: 6,
+  },
+
+  medMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  medMetaBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+
+  medMetaBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
+  medFreq: {
+    fontSize: 12,
+    color: "#A0AEC0",
+    fontWeight: "500",
+  },
+
+  cardActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
 
   actionBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: "#0D1235",
+    backgroundColor: "#F7F9FC",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
+  },
+
+  actionBtnDanger: {
+    backgroundColor: "#FFF5F5",
+    borderColor: "#FECACA",
   },
 
   timingsRow: {
@@ -569,53 +694,132 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
+    gap: 4,
   },
 
-  timeChipText: { fontSize: 11, fontWeight: "600" },
+  timeChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: "#F0F4F8",
+    marginBottom: 14,
+  },
+
+  stockSection: {
+    marginBottom: 12,
+  },
 
   stockRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 6,
+    alignItems: "center",
+    marginBottom: 8,
   },
-  stockLabel: { fontSize: 12, color: "#9A9BB0" },
-  stockPct: { fontSize: 12, fontWeight: "700" },
+
+  stockLabel: {
+    fontSize: 12,
+    color: "#718096",
+    fontWeight: "600",
+  },
+
+  stockCount: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
 
   stockBarBg: {
     height: 6,
-    backgroundColor: "#0D1235",
+    backgroundColor: "#EDF2F7",
     borderRadius: 3,
-    marginBottom: 12,
     overflow: "hidden",
+    marginBottom: 8,
   },
 
-  stockBarFill: { height: 6, borderRadius: 3 },
-
-  expiryRow: { flexDirection: "row", alignItems: "center" },
-  expiryText: { fontSize: 12, flex: 1 },
+  stockBarFill: {
+    height: 6,
+    borderRadius: 3,
+  },
 
   alertBadge: {
-    backgroundColor: "#FF6B6B18",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF5F5",
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
     borderWidth: 1,
-    borderColor: "#FF6B6B30",
+    borderColor: "#FECACA",
   },
 
-  alertBadgeText: { fontSize: 11, color: "#FF6B6B", fontWeight: "700" },
+  alertBadgeText: {
+    fontSize: 11,
+    color: "#EF4444",
+    fontWeight: "600",
+  },
 
-  empty: { alignItems: "center", paddingTop: 80, gap: 12 },
-  emptyTitle: { fontSize: 20, fontWeight: "800", color: "#3D4470" },
-  emptyText: { fontSize: 14, color: "#3D4470", textAlign: "center" },
+  expiryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  expiryText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+
+  empty: {
+    alignItems: "center",
+    paddingTop: 80,
+    gap: 12,
+  },
+
+  emptyIconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 28,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 4,
+  },
+
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#4A5568",
+  },
+
+  emptyText: {
+    fontSize: 14,
+    color: "#A0AEC0",
+    textAlign: "center",
+    lineHeight: 20,
+  },
 
   emptyBtn: {
     marginTop: 8,
-    backgroundColor: "#6C63FF",
+    backgroundColor: "#0EA5B0",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: "#0EA5B0",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
 
-  emptyBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  emptyBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+  },
 });

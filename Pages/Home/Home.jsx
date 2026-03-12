@@ -49,15 +49,51 @@ const Home = ({ navigation, route }) => {
 
   const getGreeting = () => {
     const h = new Date().getHours();
-    if (h < 12) return "Good Morning";
-    if (h < 17) return "Good Afternoon";
-    return "Good Evening";
+    if (h < 12) return "Good morning";
+    if (h < 17) return "Good afternoon";
+    return "Good evening";
   };
+
+  const getDate = () => {
+    return new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
+  };
+
+  useEffect(() => {
+    const logAsyncStorage = async () => {
+      try {
+        const keys = await AsyncStorage.getAllKeys();
+        const stores = await AsyncStorage.multiGet(keys);
+
+        const formatted = {};
+
+        stores.forEach(([key, value]) => {
+          try {
+            // Try parsing JSON values
+            formatted[key] = JSON.parse(value);
+          } catch {
+            // If not JSON, keep original
+            formatted[key] = value;
+          }
+        });
+
+        console.log("===== AsyncStorage (Formatted) =====");
+        console.log(JSON.stringify(formatted, null, 2));
+        console.log("====================================");
+      } catch (error) {
+        console.error("AsyncStorage Read Error:", error);
+      }
+    };
+
+    logAsyncStorage();
+  }, []);
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0F2C" />
-      <View style={styles.bgAccent} />
+      <StatusBar barStyle="dark-content" backgroundColor="#F7F9FC" />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -68,6 +104,7 @@ const Home = ({ navigation, route }) => {
           <View>
             <Text style={styles.greeting}>{getGreeting()},</Text>
             <Text style={styles.userName}>{userName || "there"} 👋</Text>
+            <Text style={styles.dateText}>{getDate()}</Text>
           </View>
           <TouchableOpacity
             style={styles.profileBtn}
@@ -75,29 +112,49 @@ const Home = ({ navigation, route }) => {
               await AsyncStorage.removeItem("currentUser");
               navigation.replace("Login");
             }}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
           >
-            <MaterialCommunityIcons name="logout" size={22} color="#9A9BB0" />
+            <MaterialCommunityIcons name="logout" size={20} color="#718096" />
           </TouchableOpacity>
         </View>
 
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statNum}>{totalMeds}</Text>
+            <View style={[styles.statIconWrap, { backgroundColor: "#EBF8FA" }]}>
+              <MaterialCommunityIcons name="pill" size={20} color="#0EA5B0" />
+            </View>
+            <Text style={[styles.statNum, { color: "#0EA5B0" }]}>
+              {totalMeds}
+            </Text>
             <Text style={styles.statLabel}>Active{"\n"}Medicines</Text>
           </View>
           <View style={[styles.statCard, styles.statCardAccent]}>
+            <View
+              style={[
+                styles.statIconWrap,
+                { backgroundColor: "rgba(255,255,255,0.25)" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="check-circle-outline"
+                size={20}
+                color="#fff"
+              />
+            </View>
             <Text style={[styles.statNum, { color: "#fff" }]}>
               {todayCount}
             </Text>
-            <Text style={[styles.statLabel, { color: "#D4D2FF" }]}>
-              Taken{"\n"}Today
+            <Text
+              style={[styles.statLabel, { color: "rgba(255,255,255,0.8)" }]}
+            >
+              Doses{"\n"}Taken Today
             </Text>
           </View>
         </View>
 
         {/* Section Label */}
-        <Text style={styles.sectionLabel}>What would you like to do?</Text>
+        <Text style={styles.sectionLabel}>Quick Actions</Text>
 
         {/* Scan Medicine Card */}
         <TouchableOpacity
@@ -105,25 +162,26 @@ const Home = ({ navigation, route }) => {
           onPress={() => navigation.navigate("MediTrack")}
           activeOpacity={0.85}
         >
-          <View style={[styles.cardIcon, { backgroundColor: "#4ECDC415" }]}>
+          <View style={[styles.cardIconWrap, { backgroundColor: "#EDFCFB" }]}>
             <MaterialCommunityIcons
               name="camera-outline"
-              size={34}
-              color="#4ECDC4"
+              size={28}
+              color="#0EA5B0"
             />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>Scan Medicine Packet</Text>
+            <Text style={styles.cardTitle}>Scan Medicine</Text>
             <Text style={styles.cardDesc}>
-              AI-powered analysis of any medicine — uses, side effects, and
-              manufacturing info.
+              AI-powered analysis — uses, side effects &amp; manufacturing info
             </Text>
           </View>
-          <MaterialCommunityIcons
-            name="chevron-right"
-            size={24}
-            color="#3D4470"
-          />
+          <View style={styles.chevronWrap}>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={20}
+              color="#A0AEC0"
+            />
+          </View>
         </TouchableOpacity>
 
         {/* Log Medicine Card */}
@@ -132,33 +190,39 @@ const Home = ({ navigation, route }) => {
           onPress={() => navigation.navigate("MediLogDash")}
           activeOpacity={0.85}
         >
-          <View style={[styles.cardIcon, { backgroundColor: "#6C63FF15" }]}>
-            <MaterialCommunityIcons name="pill" size={34} color="#6C63FF" />
+          <View style={[styles.cardIconWrap, { backgroundColor: "#F0F4FF" }]}>
+            <MaterialCommunityIcons
+              name="pill-multiple"
+              size={28}
+              color="#5A7AF5"
+            />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>Log Your Medicine</Text>
+            <Text style={styles.cardTitle}>Medicine Log</Text>
             <Text style={styles.cardDesc}>
-              Track doses, set reminders, and view your complete medicine
-              history.
+              Track doses, set reminders &amp; view your history
             </Text>
           </View>
-          <MaterialCommunityIcons
-            name="chevron-right"
-            size={24}
-            color="#3D4470"
-          />
+          <View style={styles.chevronWrap}>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={20}
+              color="#A0AEC0"
+            />
+          </View>
         </TouchableOpacity>
 
-        {/* Quick tip */}
+        {/* Tip Card */}
         <View style={styles.tipCard}>
-          <MaterialCommunityIcons
-            name="lightbulb-outline"
-            size={20}
-            color="#F9A825"
-          />
+          <View style={styles.tipIconWrap}>
+            <MaterialCommunityIcons
+              name="lightbulb-outline"
+              size={18}
+              color="#F59E0B"
+            />
+          </View>
           <Text style={styles.tipText}>
-            {" "}
-            Tip: Set dose timings when logging to never miss a dose!
+            Set dose timings when logging medicines to never miss a dose!
           </Text>
         </View>
       </ScrollView>
@@ -169,113 +233,192 @@ const Home = ({ navigation, route }) => {
 export default Home;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0A0F2C" },
-
-  bgAccent: {
-    position: "absolute",
-    top: -80,
-    right: -80,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: "#6C63FF18",
+  root: {
+    flex: 1,
+    backgroundColor: "#F7F9FC",
   },
 
-  scroll: { paddingHorizontal: 22, paddingBottom: 40 },
+  scroll: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
 
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 16,
+    alignItems: "flex-start",
+    paddingTop: 20,
     marginBottom: 28,
   },
 
-  greeting: { fontSize: 14, color: "#9A9BB0" },
+  greeting: {
+    fontSize: 14,
+    color: "#718096",
+    marginBottom: 2,
+  },
 
-  userName: { fontSize: 24, fontWeight: "800", color: "#FFFFFF" },
+  userName: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#1A2235",
+    marginBottom: 4,
+  },
+
+  dateText: {
+    fontSize: 13,
+    color: "#A0AEC0",
+  },
 
   profileBtn: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "#13193D",
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
 
-  statsRow: { flexDirection: "row", gap: 14, marginBottom: 32 },
+  statsRow: {
+    flexDirection: "row",
+    gap: 14,
+    marginBottom: 32,
+  },
 
   statCard: {
     flex: 1,
-    backgroundColor: "#13193D",
-    borderRadius: 18,
-    padding: 18,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
 
   statCardAccent: {
-    backgroundColor: "#6C63FF",
-    borderColor: "#6C63FF",
+    backgroundColor: "#0EA5B0",
+    borderColor: "#0EA5B0",
+    shadowColor: "#0EA5B0",
+    shadowOpacity: 0.3,
   },
 
-  statNum: { fontSize: 32, fontWeight: "800", color: "#6C63FF" },
+  statIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
 
-  statLabel: { fontSize: 12, color: "#9A9BB0", marginTop: 4, lineHeight: 18 },
+  statNum: {
+    fontSize: 32,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+
+  statLabel: {
+    fontSize: 12,
+    color: "#718096",
+    lineHeight: 17,
+  },
 
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
-    color: "#9A9BB0",
-    letterSpacing: 1.2,
+    color: "#A0AEC0",
+    letterSpacing: 1.5,
     textTransform: "uppercase",
     marginBottom: 16,
   },
 
   card: {
-    backgroundColor: "#13193D",
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 18,
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
 
-  cardIcon: {
-    width: 60,
-    height: 60,
+  cardIconWrap: {
+    width: 56,
+    height: 56,
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 16,
   },
 
-  cardContent: { flex: 1 },
+  cardContent: {
+    flex: 1,
+  },
 
   cardTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: "#1A2235",
     marginBottom: 4,
   },
 
-  cardDesc: { fontSize: 12, color: "#9A9BB0", lineHeight: 17 },
+  cardDesc: {
+    fontSize: 13,
+    color: "#718096",
+    lineHeight: 18,
+  },
+
+  chevronWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "#F7F9FC",
+    justifyContent: "center",
+    alignItems: "center",
+  },
 
   tipCard: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F9A82510",
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 8,
+    alignItems: "flex-start",
+    backgroundColor: "#FFFBEB",
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 4,
     borderWidth: 1,
-    borderColor: "#F9A82530",
+    borderColor: "#FDE68A",
+    gap: 12,
   },
 
-  tipText: { fontSize: 13, color: "#F9A825", flex: 1 },
+  tipIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "#FEF3C7",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+
+  tipText: {
+    fontSize: 13,
+    color: "#92400E",
+    flex: 1,
+    lineHeight: 19,
+  },
 });

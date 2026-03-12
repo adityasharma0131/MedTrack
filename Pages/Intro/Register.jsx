@@ -19,6 +19,7 @@ import { Text } from "../../Components/TextWrapper";
 // ✅ InputField moved outside (prevents keyboard closing)
 const InputField = ({
   icon,
+  label,
   placeholder,
   value,
   onChangeText,
@@ -29,40 +30,44 @@ const InputField = ({
   focusedField,
   setFocusedField,
 }) => (
-  <View
-    style={[
-      styles.inputContainer,
-      focusedField === field && styles.inputFocused,
-    ]}
-  >
-    <MaterialCommunityIcons
-      name={icon}
-      size={20}
-      color={focusedField === field ? "#6C63FF" : "#9A9BB0"}
-    />
-
-    <TextInput
-      style={styles.input}
-      placeholder={placeholder}
-      placeholderTextColor="#9A9BB0"
-      value={value}
-      onChangeText={onChangeText}
-      secureTextEntry={secure}
-      keyboardType={keyboardType || "default"}
-      autoCapitalize={keyboardType === "email-address" ? "none" : "words"}
-      onFocus={() => setFocusedField(field)}
-      onBlur={() => setFocusedField(null)}
-    />
-
-    {toggleSecure && (
-      <TouchableOpacity onPress={toggleSecure}>
-        <MaterialCommunityIcons
-          name={secure ? "eye-off-outline" : "eye-outline"}
-          size={20}
-          color="#9A9BB0"
-        />
-      </TouchableOpacity>
-    )}
+  <View style={styles.fieldGroup}>
+    <Text style={styles.fieldLabel}>{label}</Text>
+    <View
+      style={[
+        styles.inputContainer,
+        focusedField === field && styles.inputFocused,
+      ]}
+    >
+      <MaterialCommunityIcons
+        name={icon}
+        size={18}
+        color={focusedField === field ? "#0EA5B0" : "#A0AEC0"}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder={placeholder}
+        placeholderTextColor="#CBD5E0"
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={secure}
+        keyboardType={keyboardType || "default"}
+        autoCapitalize={keyboardType === "email-address" ? "none" : "words"}
+        onFocus={() => setFocusedField(field)}
+        onBlur={() => setFocusedField(null)}
+      />
+      {toggleSecure && (
+        <TouchableOpacity
+          onPress={toggleSecure}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <MaterialCommunityIcons
+            name={secure ? "eye-off-outline" : "eye-outline"}
+            size={18}
+            color="#A0AEC0"
+          />
+        </TouchableOpacity>
+      )}
+    </View>
   </View>
 );
 
@@ -148,7 +153,7 @@ const Register = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0F2C" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F7F9FC" />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -162,12 +167,10 @@ const Register = ({ navigation }) => {
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.logoWrap}>
-              <MaterialCommunityIcons name="pill" size={36} color="#fff" />
+              <MaterialCommunityIcons name="pill" size={32} color="#fff" />
             </View>
-
-            <Text style={styles.brand}>MedTrack</Text>
-            <Text style={styles.title}>Create Account</Text>
-
+            <Text style={styles.brand}>MEDTRACK</Text>
+            <Text style={styles.title}>Create account</Text>
             <Text style={styles.subtitle}>
               Join thousands managing their health smarter
             </Text>
@@ -177,7 +180,8 @@ const Register = ({ navigation }) => {
           <View style={styles.card}>
             <InputField
               icon="account-outline"
-              placeholder="Full Name"
+              label="Full Name"
+              placeholder="Jane Doe"
               value={name}
               onChangeText={setName}
               field="name"
@@ -187,7 +191,8 @@ const Register = ({ navigation }) => {
 
             <InputField
               icon="email-outline"
-              placeholder="Email Address"
+              label="Email Address"
+              placeholder="you@example.com"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -198,7 +203,8 @@ const Register = ({ navigation }) => {
 
             <InputField
               icon="lock-outline"
-              placeholder="Password"
+              label="Password"
+              placeholder="Min. 6 characters"
               value={password}
               onChangeText={setPassword}
               secure={secure}
@@ -210,7 +216,8 @@ const Register = ({ navigation }) => {
 
             <InputField
               icon="lock-check-outline"
-              placeholder="Confirm Password"
+              label="Confirm Password"
+              placeholder="Re-enter your password"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secure={secureConfirm}
@@ -220,25 +227,52 @@ const Register = ({ navigation }) => {
               setFocusedField={setFocusedField}
             />
 
+            {/* Password hint */}
+            <View style={styles.hintRow}>
+              <MaterialCommunityIcons
+                name="shield-check-outline"
+                size={14}
+                color="#0EA5B0"
+              />
+              <Text style={styles.hintText}>
+                {" "}
+                Your data is securely stored on this device
+              </Text>
+            </View>
+
             <TouchableOpacity
-              style={styles.registerButton}
+              style={[
+                styles.registerButton,
+                loading && styles.registerButtonDisabled,
+              ]}
               onPress={handleRegister}
               disabled={loading}
+              activeOpacity={0.85}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.registerText}>Create Account</Text>
+                <>
+                  <Text style={styles.registerText}>Create Account</Text>
+                  <MaterialCommunityIcons
+                    name="arrow-right"
+                    size={18}
+                    color="#fff"
+                  />
+                </>
               )}
             </TouchableOpacity>
+          </View>
 
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Already have an account?</Text>
-
-              <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-                <Text style={styles.login}> Sign In</Text>
-              </TouchableOpacity>
-            </View>
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Already have an account?</Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("Login")}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+            >
+              <Text style={styles.login}> Sign in</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -249,97 +283,166 @@ const Register = ({ navigation }) => {
 export default Register;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0A0F2C" },
-
-  bgAccent: {
-    position: "absolute",
-    top: -60,
-    left: -60,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: "#4ECDC422",
+  root: {
+    flex: 1,
+    backgroundColor: "#F7F9FC",
   },
 
-  container: { paddingHorizontal: 24, paddingVertical: 32 },
+  container: {
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+  },
 
-  header: { alignItems: "center", marginBottom: 32 },
+  header: {
+    alignItems: "center",
+    marginBottom: 28,
+  },
 
   logoWrap: {
     width: 72,
     height: 72,
-    borderRadius: 22,
-    backgroundColor: "#6C63FF",
+    borderRadius: 24,
+    backgroundColor: "#0EA5B0",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
-    shadowColor: "#6C63FF",
+    marginBottom: 20,
+    shadowColor: "#0EA5B0",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
+    shadowOpacity: 0.3,
     shadowRadius: 16,
-    elevation: 12,
+    elevation: 10,
   },
 
   brand: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#6C63FF",
-    letterSpacing: 3,
-    marginBottom: 10,
+    color: "#0EA5B0",
+    letterSpacing: 4,
+    marginBottom: 12,
   },
 
-  title: { fontSize: 28, fontWeight: "800", color: "#FFFFFF", marginBottom: 6 },
+  title: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#1A2235",
+    marginBottom: 8,
+  },
 
-  subtitle: { fontSize: 14, color: "#9A9BB0", textAlign: "center" },
+  subtitle: {
+    fontSize: 14,
+    color: "#718096",
+    textAlign: "center",
+    lineHeight: 20,
+  },
 
   card: {
-    backgroundColor: "#13193D",
+    backgroundColor: "#FFFFFF",
     borderRadius: 24,
     padding: 24,
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 6,
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#EDF2F7",
+  },
+
+  fieldGroup: {
+    marginBottom: 4,
+  },
+
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#4A5568",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    textTransform: "uppercase",
   },
 
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0D1235",
+    backgroundColor: "#F7F9FC",
     borderRadius: 14,
     paddingHorizontal: 16,
-    marginBottom: 14,
-    height: 56,
-    borderWidth: 1,
-    borderColor: "#1E2550",
+    marginBottom: 20,
+    height: 54,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
   },
 
-  inputFocused: { borderColor: "#6C63FF" },
+  inputFocused: {
+    borderColor: "#0EA5B0",
+    backgroundColor: "#F0FAFB",
+  },
 
-  input: { flex: 1, marginLeft: 10, fontSize: 15, color: "#FFFFFF" },
+  input: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 15,
+    color: "#1A2235",
+  },
+
+  hintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FAFB",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#BAE6EA",
+  },
+
+  hintText: {
+    fontSize: 12,
+    color: "#0EA5B0",
+    lineHeight: 17,
+  },
 
   registerButton: {
-    backgroundColor: "#6C63FF",
+    backgroundColor: "#0EA5B0",
     height: 56,
-    borderRadius: 14,
+    borderRadius: 16,
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 6,
-    shadowColor: "#6C63FF",
+    gap: 8,
+    shadowColor: "#0EA5B0",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.35,
     shadowRadius: 12,
     elevation: 8,
+  },
+
+  registerButtonDisabled: {
+    opacity: 0.7,
   },
 
   registerText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 
-  footer: { flexDirection: "row", justifyContent: "center", marginTop: 20 },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 24,
+  },
 
-  footerText: { color: "#9A9BB0", fontSize: 14 },
+  footerText: {
+    color: "#718096",
+    fontSize: 14,
+  },
 
-  login: { color: "#6C63FF", fontWeight: "700", fontSize: 14 },
+  login: {
+    color: "#0EA5B0",
+    fontWeight: "700",
+    fontSize: 14,
+  },
 });

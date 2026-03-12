@@ -13,15 +13,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Text } from "../../Components/TextWrapper";
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
-const formatDate = (iso) => {
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-};
-
 const groupByDate = (history) => {
   const groups = {};
   history.forEach((item) => {
@@ -29,7 +20,6 @@ const groupByDate = (history) => {
     if (!groups[key]) groups[key] = [];
     groups[key].push(item);
   });
-  // Sort: newest first
   return Object.entries(groups)
     .sort(([a], [b]) => new Date(b) - new Date(a))
     .map(([date, items]) => ({ date, items }));
@@ -45,6 +35,54 @@ const DOSE_TYPE_ICONS = {
   Patch: "bandage",
   Cream: "lotion-outline",
 };
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+const StatCard = ({ value, label, color, icon, bg }) => (
+  <View style={statStyles.card}>
+    <View style={[statStyles.iconBox, { backgroundColor: bg }]}>
+      <MaterialCommunityIcons name={icon} size={20} color={color} />
+    </View>
+    <Text style={[statStyles.value, { color }]}>{value}</Text>
+    <Text style={statStyles.label}>{label}</Text>
+  </View>
+);
+
+const statStyles = StyleSheet.create({
+  card: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 18,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+    gap: 6,
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  value: {
+    fontSize: 26,
+    fontWeight: "800",
+  },
+  label: {
+    fontSize: 11,
+    color: "#A0AEC0",
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 16,
+  },
+});
 
 // ─── Component ────────────────────────────────────────────────────────────────
 const History = ({ navigation }) => {
@@ -68,7 +106,7 @@ const History = ({ navigation }) => {
       const historyRaw = await AsyncStorage.getItem(`history_${userEmail}`);
       let history = historyRaw ? JSON.parse(historyRaw) : [];
 
-      // Mark past-due entries as missed automatically (if not taken & time passed)
+      // Mark past-due entries as missed automatically
       const now = new Date();
       let updated = false;
       history = history.map((h) => {
@@ -108,7 +146,6 @@ const History = ({ navigation }) => {
       ].sort((a, b) => new Date(b) - new Date(a));
 
       let streakCount = 0;
-      const today = new Date().toDateString();
       let checkDate = new Date();
       for (const day of days) {
         if (day === checkDate.toDateString()) {
@@ -136,7 +173,6 @@ const History = ({ navigation }) => {
         ? new Date().toISOString()
         : null;
 
-      // Decrement medicine quantity when taken
       if (history[idx].taken) {
         const medsRaw = await AsyncStorage.getItem(`medicines_${userEmail}`);
         const meds = medsRaw ? JSON.parse(medsRaw) : [];
@@ -173,6 +209,7 @@ const History = ({ navigation }) => {
 
   const isToday = (dateStr) =>
     new Date(dateStr).toDateString() === new Date().toDateString();
+
   const isYesterday = (dateStr) => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
@@ -189,112 +226,209 @@ const History = ({ navigation }) => {
     });
   };
 
+  const adherenceColor =
+    adherenceRate >= 80
+      ? "#10B981"
+      : adherenceRate >= 50
+        ? "#F59E0B"
+        : "#EF4444";
+
+  const adherenceBg =
+    adherenceRate >= 80
+      ? "#ECFDF5"
+      : adherenceRate >= 50
+        ? "#FFFBEB"
+        : "#FFF5F5";
+
+  const FILTERS = [
+    { key: "all", label: "All", icon: "format-list-bulleted" },
+    { key: "taken", label: "Taken", icon: "check-circle-outline" },
+    { key: "missed", label: "Missed", icon: "close-circle-outline" },
+  ];
+
   const renderItem = ({ item: group }) => {
     const filtered = getFilteredItems(group.items);
     if (!filtered.length) return null;
 
     const allTaken = group.items.every((i) => i.taken);
     const someTaken = group.items.some((i) => i.taken);
+    const takenCount = group.items.filter((i) => i.taken).length;
+    const totalCount = group.items.length;
+
+    const dayStatus = allTaken ? "done" : someTaken ? "partial" : "missed";
+    const dayColor =
+      dayStatus === "done"
+        ? "#10B981"
+        : dayStatus === "partial"
+          ? "#F59E0B"
+          : "#EF4444";
+    const dayBg =
+      dayStatus === "done"
+        ? "#ECFDF5"
+        : dayStatus === "partial"
+          ? "#FFFBEB"
+          : "#FFF5F5";
+    const dayIcon =
+      dayStatus === "done"
+        ? "check-circle"
+        : dayStatus === "partial"
+          ? "circle-half-full"
+          : "close-circle";
+    const dayLabel =
+      dayStatus === "done"
+        ? "All done"
+        : dayStatus === "partial"
+          ? "Partial"
+          : "Missed";
 
     return (
       <View style={styles.group}>
-        {/* Date Header */}
+        {/* Date Section Header */}
         <View style={styles.dateHeader}>
-          <Text style={styles.dateLabel}>{renderDateLabel(group.date)}</Text>
-          <View
-            style={[
-              styles.dayBadge,
-              {
-                backgroundColor: allTaken
-                  ? "#4ECDC415"
-                  : someTaken
-                    ? "#FFB34715"
-                    : "#FF6B6B15",
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.dayBadgeText,
-                {
-                  color: allTaken
-                    ? "#4ECDC4"
-                    : someTaken
-                      ? "#FFB347"
-                      : "#FF6B6B",
-                },
-              ]}
-            >
-              {allTaken ? "✓ All Done" : someTaken ? "Partial" : "Missed"}
+          <View style={styles.dateHeaderLeft}>
+            <View
+              style={[styles.dateAccentBar, { backgroundColor: dayColor }]}
+            />
+            <View>
+              <Text style={styles.dateLabel}>
+                {renderDateLabel(group.date)}
+              </Text>
+              <Text style={styles.dateSub}>
+                {takenCount} of {totalCount} doses taken
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.dayBadge, { backgroundColor: dayBg }]}>
+            <MaterialCommunityIcons name={dayIcon} size={13} color={dayColor} />
+            <Text style={[styles.dayBadgeText, { color: dayColor }]}>
+              {" "}
+              {dayLabel}
             </Text>
           </View>
         </View>
 
         {/* Dose cards */}
-        {filtered.map((dose) => (
-          <TouchableOpacity
-            key={dose.id}
-            style={[styles.doseCard, dose.taken && styles.doseCardTaken]}
-            onPress={() => toggleTaken(dose)}
-            activeOpacity={0.8}
-          >
-            <View
-              style={[
-                styles.doseIconWrap,
-                { backgroundColor: dose.taken ? "#4ECDC415" : "#FF6B6B15" },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name={DOSE_TYPE_ICONS[dose.doseType] || "pill"}
-                size={22}
-                color={dose.taken ? "#4ECDC4" : "#FF6B6B"}
-              />
-            </View>
+        <View style={styles.dosesCard}>
+          {filtered.map((dose, index) => {
+            const isTaken = dose.taken;
+            return (
+              <View key={dose.id}>
+                <TouchableOpacity
+                  style={[
+                    styles.doseRow,
+                    isTaken && styles.doseRowTaken,
+                    !isTaken && dose.markedMissed && styles.doseRowMissed,
+                    index < filtered.length - 1 && styles.doseRowBorder,
+                  ]}
+                  onPress={() => toggleTaken(dose)}
+                  activeOpacity={0.8}
+                >
+                  {/* Left state stripe */}
+                  <View
+                    style={[
+                      styles.doseStripe,
+                      {
+                        backgroundColor: isTaken
+                          ? "#10B981"
+                          : dose.markedMissed
+                            ? "#EF4444"
+                            : "#E2E8F0",
+                      },
+                    ]}
+                  />
 
-            <View style={styles.doseInfo}>
-              <Text style={styles.doseName}>{dose.medicineName}</Text>
-              <Text style={styles.doseType}>
-                {dose.doseType} · {dose.time}
-              </Text>
-              {dose.taken && dose.takenAt && (
-                <Text style={styles.takenAt}>
-                  Marked at{" "}
-                  {new Date(dose.takenAt).toLocaleTimeString("en-IN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              )}
-            </View>
+                  {/* Icon */}
+                  <View
+                    style={[
+                      styles.doseIconWrap,
+                      {
+                        backgroundColor: isTaken
+                          ? "#ECFDF5"
+                          : dose.markedMissed
+                            ? "#FFF5F5"
+                            : "#F7F9FC",
+                      },
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name={DOSE_TYPE_ICONS[dose.doseType] || "pill"}
+                      size={20}
+                      color={
+                        isTaken
+                          ? "#10B981"
+                          : dose.markedMissed
+                            ? "#EF4444"
+                            : "#A0AEC0"
+                      }
+                    />
+                  </View>
 
-            <View
-              style={[
-                styles.statusBtn,
-                { backgroundColor: dose.taken ? "#4ECDC4" : "#1E2550" },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name={dose.taken ? "check" : "close"}
-                size={18}
-                color={dose.taken ? "#fff" : "#9A9BB0"}
-              />
-            </View>
-          </TouchableOpacity>
-        ))}
+                  {/* Info */}
+                  <View style={styles.doseInfo}>
+                    <Text style={styles.doseName}>{dose.medicineName}</Text>
+                    <View style={styles.doseMetaRow}>
+                      <Text style={styles.doseMeta}>{dose.doseType}</Text>
+                      <View style={styles.dotSep} />
+                      <Text style={styles.doseMeta}>{dose.time}</Text>
+                    </View>
+                    {isTaken && dose.takenAt && (
+                      <View style={styles.takenChip}>
+                        <MaterialCommunityIcons
+                          name="clock-check-outline"
+                          size={11}
+                          color="#10B981"
+                        />
+                        <Text style={styles.takenChipText}>
+                          {" "}
+                          Taken at{" "}
+                          {new Date(dose.takenAt).toLocaleTimeString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Action Button */}
+                  <TouchableOpacity
+                    style={[
+                      styles.actionChip,
+                      isTaken
+                        ? styles.actionChipTaken
+                        : styles.actionChipPending,
+                    ]}
+                    onPress={() => toggleTaken(dose)}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                  >
+                    <MaterialCommunityIcons
+                      name={isTaken ? "check" : "plus"}
+                      size={13}
+                      color={isTaken ? "#10B981" : "#FFFFFF"}
+                    />
+                    <Text
+                      style={[
+                        styles.actionChipText,
+                        isTaken
+                          ? styles.actionChipTextTaken
+                          : styles.actionChipTextPending,
+                      ]}
+                    >
+                      {isTaken ? "Done" : "Mark"}
+                    </Text>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
       </View>
     );
   };
 
-  const adherenceColor =
-    adherenceRate >= 80
-      ? "#4ECDC4"
-      : adherenceRate >= 50
-        ? "#FFB347"
-        : "#FF6B6B";
-
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0A0F2C" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F7F9FC" />
 
       {/* Header */}
       <View style={styles.header}>
@@ -302,7 +436,7 @@ const History = ({ navigation }) => {
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
         >
-          <MaterialCommunityIcons name="arrow-left" size={22} color="#9A9BB0" />
+          <MaterialCommunityIcons name="arrow-left" size={20} color="#4A5568" />
         </TouchableOpacity>
         <View>
           <Text style={styles.title}>Dose History</Text>
@@ -310,60 +444,77 @@ const History = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Stats row */}
+      {/* Stats Row */}
       <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={[styles.statNum, { color: adherenceColor }]}>
-            {adherenceRate}%
-          </Text>
-          <Text style={styles.statLabel}>7-day Adherence</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statNum, { color: "#FFB347" }]}>
-            {streak} 🔥
-          </Text>
-          <Text style={styles.statLabel}>Day Streak</Text>
-        </View>
+        <StatCard
+          value={`${adherenceRate}%`}
+          label={"7-Day\nAdherence"}
+          color={adherenceColor}
+          icon="chart-arc"
+          bg={adherenceBg}
+        />
+        <StatCard
+          value={`${streak} 🔥`}
+          label={"Day\nStreak"}
+          color="#F59E0B"
+          icon="fire"
+          bg="#FFFBEB"
+        />
       </View>
 
-      {/* Filters */}
+      {/* Filter Pills */}
       <View style={styles.filters}>
-        {["all", "taken", "missed"].map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterBtn, filter === f && styles.filterBtnActive]}
-            onPress={() => setFilter(f)}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filter === f && styles.filterTextActive,
-              ]}
+        {FILTERS.map((f) => {
+          const isActive = filter === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.filterPill, isActive && styles.filterPillActive]}
+              onPress={() => setFilter(f.key)}
+              activeOpacity={0.8}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <MaterialCommunityIcons
+                name={f.icon}
+                size={14}
+                color={isActive ? "#fff" : "#718096"}
+              />
+              <Text
+                style={[styles.filterText, isActive && styles.filterTextActive]}
+              >
+                {" "}
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
+      {/* List */}
       <FlatList
         data={grouped}
         keyExtractor={(item) => item.date}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#6C63FF"
+            tintColor="#0EA5B0"
           />
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <MaterialCommunityIcons name="history" size={60} color="#1E2550" />
+            <View style={styles.emptyIconWrap}>
+              <MaterialCommunityIcons
+                name="history"
+                size={44}
+                color="#CBD5E0"
+              />
+            </View>
             <Text style={styles.emptyTitle}>No History Yet</Text>
             <Text style={styles.emptyText}>
-              Log a medicine to start tracking your doses.
+              Log a medicine to start tracking your doses here.
             </Text>
           </View>
         }
@@ -375,124 +526,313 @@ const History = ({ navigation }) => {
 export default History;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0A0F2C" },
+  root: {
+    flex: 1,
+    backgroundColor: "#F7F9FC",
+  },
 
+  // ─── Header ────────────────────────────────────────────────────────────────
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 12,
-    gap: 14,
+    gap: 16,
   },
 
   backBtn: {
     width: 42,
     height: 42,
-    borderRadius: 13,
-    backgroundColor: "#13193D",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#1E2550",
+    borderColor: "#E2E8F0",
   },
 
-  title: { fontSize: 22, fontWeight: "800", color: "#FFFFFF" },
-  subtitle: { fontSize: 13, color: "#9A9BB0" },
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1A2235",
+  },
 
+  subtitle: {
+    fontSize: 13,
+    color: "#A0AEC0",
+    marginTop: 1,
+  },
+
+  // ─── Stats ─────────────────────────────────────────────────────────────────
   statsRow: {
     flexDirection: "row",
-    gap: 12,
-    paddingHorizontal: 22,
+    gap: 14,
+    paddingHorizontal: 24,
     marginBottom: 16,
   },
 
-  statCard: {
-    flex: 1,
-    backgroundColor: "#13193D",
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#1E2550",
-    alignItems: "center",
-  },
-
-  statNum: { fontSize: 26, fontWeight: "800" },
-  statLabel: { fontSize: 12, color: "#9A9BB0", marginTop: 4 },
-
+  // ─── Filters ───────────────────────────────────────────────────────────────
   filters: {
     flexDirection: "row",
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 20,
   },
 
-  filterBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#13193D",
-    borderWidth: 1,
-    borderColor: "#1E2550",
+  filterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
   },
 
-  filterBtnActive: { backgroundColor: "#6C63FF", borderColor: "#6C63FF" },
+  filterPillActive: {
+    backgroundColor: "#0EA5B0",
+    borderColor: "#0EA5B0",
+  },
 
-  filterText: { fontSize: 13, color: "#9A9BB0", fontWeight: "600" },
-  filterTextActive: { color: "#fff" },
+  filterText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#718096",
+  },
 
-  listContent: { paddingHorizontal: 22, paddingBottom: 40 },
+  filterTextActive: {
+    color: "#fff",
+  },
 
-  group: { marginBottom: 20 },
+  // ─── List ──────────────────────────────────────────────────────────────────
+  listContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 48,
+  },
+
+  // ─── Group ─────────────────────────────────────────────────────────────────
+  group: {
+    marginBottom: 24,
+  },
 
   dateHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 10,
+    paddingHorizontal: 2,
   },
 
-  dateLabel: { fontSize: 14, fontWeight: "700", color: "#FFFFFF" },
-
-  dayBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  dayBadgeText: { fontSize: 11, fontWeight: "700" },
-
-  doseCard: {
-    backgroundColor: "#13193D",
-    borderRadius: 16,
-    padding: 14,
+  dateHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#1E2550",
+    gap: 10,
   },
 
-  doseCardTaken: { borderColor: "#4ECDC430" },
+  dateAccentBar: {
+    width: 4,
+    height: 36,
+    borderRadius: 2,
+  },
+
+  dateLabel: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#1A2235",
+  },
+
+  dateSub: {
+    fontSize: 12,
+    color: "#A0AEC0",
+    fontWeight: "500",
+    marginTop: 1,
+  },
+
+  dayBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+
+  dayBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
+  // ─── Doses Card ────────────────────────────────────────────────────────────
+  dosesCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+    shadowColor: "#1A2235",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+
+  doseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingRight: 16,
+    backgroundColor: "#FFFFFF",
+  },
+
+  doseRowTaken: {
+    backgroundColor: "#F8FFFE",
+  },
+
+  doseRowMissed: {
+    backgroundColor: "#FFFAFA",
+  },
+
+  doseRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F4F8",
+  },
+
+  doseStripe: {
+    width: 4,
+    alignSelf: "stretch",
+    borderRadius: 2,
+    marginLeft: 12,
+    marginRight: 12,
+    minHeight: 48,
+  },
 
   doseIconWrap: {
-    width: 46,
-    height: 46,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    flexShrink: 0,
   },
 
-  doseInfo: { flex: 1 },
-  doseName: { fontSize: 15, fontWeight: "700", color: "#FFFFFF" },
-  doseType: { fontSize: 12, color: "#9A9BB0", marginTop: 2 },
-  takenAt: { fontSize: 11, color: "#4ECDC4", marginTop: 3 },
+  doseInfo: {
+    flex: 1,
+  },
 
-  statusBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  doseName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1A2235",
+    marginBottom: 3,
+  },
+
+  doseMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  doseMeta: {
+    fontSize: 12,
+    color: "#A0AEC0",
+    fontWeight: "500",
+  },
+
+  dotSep: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: "#CBD5E0",
+  },
+
+  takenChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+
+  takenChipText: {
+    fontSize: 11,
+    color: "#10B981",
+    fontWeight: "600",
+  },
+
+  // ─── Action Chip ───────────────────────────────────────────────────────────
+  actionChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    gap: 4,
+    flexShrink: 0,
+  },
+
+  actionChipTaken: {
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+
+  actionChipPending: {
+    backgroundColor: "#0EA5B0",
+    shadowColor: "#0EA5B0",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+
+  actionChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  actionChipTextTaken: {
+    color: "#10B981",
+  },
+
+  actionChipTextPending: {
+    color: "#FFFFFF",
+  },
+
+  // ─── Empty ─────────────────────────────────────────────────────────────────
+  empty: {
+    alignItems: "center",
+    paddingTop: 80,
+    gap: 12,
+  },
+
+  emptyIconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 28,
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 4,
   },
 
-  empty: { alignItems: "center", paddingTop: 80, gap: 12 },
-  emptyTitle: { fontSize: 20, fontWeight: "800", color: "#3D4470" },
-  emptyText: { fontSize: 14, color: "#3D4470", textAlign: "center" },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#4A5568",
+  },
+
+  emptyText: {
+    fontSize: 14,
+    color: "#A0AEC0",
+    textAlign: "center",
+    lineHeight: 21,
+    paddingHorizontal: 16,
+  },
 });
