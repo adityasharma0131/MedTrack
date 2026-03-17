@@ -1,3 +1,4 @@
+import * as FileSystem from "expo-file-system/legacy";
 import {
   ACTIVE_MODEL,
   MODELS,
@@ -20,7 +21,6 @@ async function callAPI(base64Image, modelConfig) {
     console.log(`Provider: ${modelConfig.name}`);
     console.log(`Image size: ${base64Image.length} characters`);
 
-    // Build the message content with image for vision models
     const messageContent = [
       {
         type: "text",
@@ -46,7 +46,6 @@ async function callAPI(base64Image, modelConfig) {
       temperature: modelConfig.temperature || 0.3,
     };
 
-    // Add optional parameters if they exist
     if (modelConfig.topP) requestBody.top_p = modelConfig.topP;
 
     console.log(
@@ -54,12 +53,12 @@ async function callAPI(base64Image, modelConfig) {
       JSON.stringify(requestBody).substring(0, 200) + "...",
     );
 
-    // Make REST request using the configured baseUrl
     const response = await fetch(modelConfig.baseUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${modelConfig.apiKey}`,
+        Accept: "application/json",
       },
       body: JSON.stringify(requestBody),
     });
@@ -98,8 +97,35 @@ async function callAPI(base64Image, modelConfig) {
     console.log("Raw AI response:", rawText);
     return rawText;
   } catch (error) {
+    // Rethrow with clearer message for network failures
+    if (
+      error.message === "Network request failed" ||
+      error.message?.includes("Network")
+    ) {
+      throw new Error(
+        "Network request failed — check internet connection or API endpoint URL.",
+      );
+    }
     throw new Error(`API Error: ${error.message || "Unknown error"}`);
   }
+}
+
+// ========================================
+// CONVERT LOCAL URI → BASE64
+// Uses expo-file-system (works in React Native / Expo Go)
+// ========================================
+
+async function uriToBase64(imageUri) {
+  console.log("Converting image to base64 via expo-file-system...");
+
+  // expo-file-system can only read from local filesystem paths.
+  // Camera / ImagePicker both return file:// URIs, so this works directly.
+  const base64 = await FileSystem.readAsStringAsync(imageUri, {
+    encoding: "base64",
+  });
+
+  console.log("Image converted, length:", base64.length);
+  return base64;
 }
 
 // ========================================
@@ -108,7 +134,7 @@ async function callAPI(base64Image, modelConfig) {
 
 async function analyzeImage(imageUri) {
   try {
-    // Step 1: Validate API configuration
+    // ── Step 1: Validate API configuration ────────────────────────────────
     console.log("=================================");
     console.log("Checking available models...");
 
@@ -124,10 +150,9 @@ async function analyzeImage(imageUri) {
       );
     }
 
-    // Step 2: Prepare list of models to try
+    // ── Step 2: Build model priority list ─────────────────────────────────
     const modelsToTry = [];
 
-    // First, try the active model if it has a valid key
     try {
       const activeConfig = getModelConfig(ACTIVE_MODEL);
       modelsToTry.push({
@@ -140,7 +165,6 @@ async function analyzeImage(imageUri) {
       console.warn(`⚠️ ${error.message}`);
     }
 
-    // Then add other available models as fallbacks
     for (const model of availableModels) {
       if (model.id !== ACTIVE_MODEL) {
         modelsToTry.push({
@@ -154,22 +178,10 @@ async function analyzeImage(imageUri) {
     console.log(`Total models to try: ${modelsToTry.length}`);
     console.log("=================================");
 
-    // Step 3: Convert image to base64 (do this once)
-    console.log("Converting image to base64...");
-    const response = await fetch(imageUri);
-    const blob = await response.blob();
-    const base64 = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64data = reader.result.split(",")[1];
-        resolve(base64data);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-    console.log("Image converted, length:", base64.length);
+    // ── Step 3: Convert image once ────────────────────────────────────────
+    const base64 = await uriToBase64(imageUri);
 
-    // Step 4: Try each model until one succeeds
+    // ── Step 4: Try each model ────────────────────────────────────────────
     const errors = [];
 
     for (let i = 0; i < modelsToTry.length; i++) {
@@ -184,15 +196,13 @@ async function analyzeImage(imageUri) {
         console.log("Type:", isPrimary ? "PRIMARY" : "FALLBACK");
         console.log("=================================");
 
-        // Call API
         const rawText = await callAPI(base64, config);
         console.log(`✅ Success with ${config.name}!`);
         console.log("Raw response length:", rawText.length);
 
-        // Clean and parse JSON response - handle various formats
+        // ── Clean & parse JSON ──────────────────────────────────────────
         let cleanedText = rawText.trim();
 
-        // Remove markdown code blocks
         if (cleanedText.startsWith("```json")) {
           cleanedText = cleanedText
             .replace(/```json\n?/g, "")
@@ -201,7 +211,6 @@ async function analyzeImage(imageUri) {
           cleanedText = cleanedText.replace(/```\n?/g, "");
         }
 
-        // Remove any leading/trailing text before JSON
         const jsonStart = cleanedText.indexOf("{");
         const jsonEnd = cleanedText.lastIndexOf("}");
 
@@ -214,7 +223,7 @@ async function analyzeImage(imageUri) {
 
         const parsed = JSON.parse(cleanedText);
 
-        // Calculate confidence score based on extracted data visibility
+        // ── Confidence score ────────────────────────────────────────────
         const extractedFields = [
           parsed.name,
           parsed.genericName,
@@ -230,16 +239,14 @@ async function analyzeImage(imageUri) {
         const filledFields = extractedFields.filter(
           (field) => field && field.trim() !== "",
         ).length;
-        const totalFields = extractedFields.length;
         const confidencePercent = Math.round(
-          (filledFields / totalFields) * 100,
+          (filledFields / extractedFields.length) * 100,
         );
 
         console.log(
-          `📊 Confidence: ${confidencePercent}% (${filledFields}/${totalFields} fields extracted)`,
+          `📊 Confidence: ${confidencePercent}% (${filledFields}/${extractedFields.length} fields extracted)`,
         );
 
-        // Validate that we got actual data from the image
         const hasData =
           parsed.name ||
           parsed.genericName ||
@@ -251,11 +258,10 @@ async function analyzeImage(imageUri) {
 
         if (!hasData) {
           console.warn(
-            "⚠️ No data extracted from image - AI may not have seen the image properly",
+            "⚠️ No data extracted from image — AI may not have seen the image properly",
           );
         }
 
-        // Build comprehensive display name
         const displayName = [
           parsed.name,
           parsed.genericName ? `${parsed.genericName}` : "",
@@ -265,7 +271,7 @@ async function analyzeImage(imageUri) {
           .filter(Boolean)
           .join(" • ");
 
-        // Return successful result with comprehensive information
+        // ── Return structured result ────────────────────────────────────
         return {
           medicine: {
             name: displayName || parsed.name || "",
@@ -384,7 +390,6 @@ async function analyzeImage(imageUri) {
           error: error.message,
         });
 
-        // If this isn't the last model, continue to next
         if (i < modelsToTry.length - 1) {
           console.log(`Trying next model...`);
           continue;
@@ -392,9 +397,10 @@ async function analyzeImage(imageUri) {
       }
     }
 
-    // If we get here, all models failed
     throw new Error(
-      `All ${modelsToTry.length} models failed. See errors below.`,
+      `All ${modelsToTry.length} models failed. Errors: ${errors
+        .map((e) => `${e.model}: ${e.error}`)
+        .join(" | ")}`,
     );
   } catch (error) {
     console.error("Analysis error:", error);
@@ -402,7 +408,6 @@ async function analyzeImage(imageUri) {
     const availableModels = getAvailableModels();
     const errorDetails = [];
 
-    // Add error messages from failed attempts
     if (
       error.message.includes("All") &&
       error.message.includes("models failed")
@@ -421,10 +426,10 @@ async function analyzeImage(imageUri) {
         availableModels.map((m) => m.name).join(", ") || "None"
       }`,
       "Common issues:",
-      "1. API key not configured - check config.js",
-      "2. Invalid API key - verify your API key",
-      "3. Rate limited - wait a few minutes and retry",
-      "4. Network issue - check your internet connection",
+      "1. API key not configured — check config.js",
+      "2. Invalid API key — verify your API key",
+      "3. Rate limited — wait a few minutes and retry",
+      "4. Network issue — check internet connection",
       "",
       "Solution: Check your API configuration in config.js!",
     ];
