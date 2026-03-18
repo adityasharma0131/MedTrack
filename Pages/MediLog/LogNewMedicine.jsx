@@ -16,10 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Text } from "../../Components/TextWrapper";
 
 // Import from the centralised service — NO notification listener lives here
-import {
-  isExpoGo,
-  scheduleNotifications,
-} from "./notificationService"; // ← adjust path
+import { isExpoGo, scheduleNotifications } from "./notificationService"; // ← adjust path
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DOSE_TYPES = [
@@ -606,10 +603,70 @@ const stepStyles = StyleSheet.create({
   subtitle: { fontSize: 13, color: "#718096", lineHeight: 19 },
 });
 
+// ─── PreFill Banner ───────────────────────────────────────────────────────────
+// Shown at the top of Step 1 when data arrives from the scan result.
+const PreFillBanner = () => (
+  <View style={pfStyles.banner}>
+    <View style={pfStyles.iconWrap}>
+      <MaterialCommunityIcons name="auto-fix" size={18} color="#0EA5B0" />
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text style={pfStyles.title}>Auto-filled from scan</Text>
+      <Text style={pfStyles.subtitle}>
+        Fields are pre-filled from the scanned packet. Review and edit as
+        needed.
+      </Text>
+    </View>
+  </View>
+);
+
+const pfStyles = StyleSheet.create({
+  banner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#F0FAFB",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: "#BAE6EA",
+    gap: 12,
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#BAE6EA",
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  title: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#0EA5B0",
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: 12,
+    color: "#4A8FA0",
+    lineHeight: 17,
+  },
+});
+
 // ─── Main Component ───────────────────────────────────────────────────────────
-const LogNewMedicine = ({ navigation }) => {
-  const [name, setName] = useState("");
-  const [expiry, setExpiry] = useState("");
+const LogNewMedicine = ({ navigation, route }) => {
+  // ── Read pre-fill params passed from ResultScreen ─────────────────────────
+  const prefillName = route?.params?.prefillName ?? "";
+  const prefillExpiry = route?.params?.prefillExpiry ?? "";
+  const hasPrefill = !!(prefillName || prefillExpiry);
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  const [name, setName] = useState(prefillName);
+  const [expiry, setExpiry] = useState(prefillExpiry);
   const [expiryError, setExpiryError] = useState("");
   const [selectedDoseType, setSelectedDoseType] = useState(null);
   const [selectedFrequency, setSelectedFrequency] = useState(null);
@@ -630,6 +687,12 @@ const LogNewMedicine = ({ navigation }) => {
     message: "",
     buttons: [],
   });
+
+  // If params change (e.g. deep-link re-navigate), re-seed the fields.
+  useEffect(() => {
+    if (prefillName) setName(prefillName);
+    if (prefillExpiry) setExpiry(prefillExpiry);
+  }, [prefillName, prefillExpiry]);
 
   const showModal = (config) => setModal({ ...config, visible: true });
   const hideModal = () => setModal((m) => ({ ...m, visible: false }));
@@ -840,7 +903,6 @@ const LogNewMedicine = ({ navigation }) => {
         notificationIds: [],
       };
 
-      // scheduleNotifications is imported from the centralised service
       newMed.notificationIds = await scheduleNotifications(newMed);
       meds.push(newMed);
       await AsyncStorage.setItem(
@@ -905,12 +967,18 @@ const LogNewMedicine = ({ navigation }) => {
         title="Basic Information"
         subtitle="Enter the medicine details and stock information."
       />
+
+      {/* Pre-fill banner — only shown when data arrives from scan */}
+      {hasPrefill && <PreFillBanner />}
+
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Medicine Name</Text>
         <View
           style={[
             styles.inputContainer,
             focusedField === "name" && styles.inputFocused,
+            // Subtle highlight when value was pre-filled
+            hasPrefill && name === prefillName && styles.inputPrefilled,
           ]}
         >
           <MaterialCommunityIcons
@@ -927,8 +995,20 @@ const LogNewMedicine = ({ navigation }) => {
             onFocus={() => setFocusedField("name")}
             onBlur={() => setFocusedField(null)}
           />
+          {/* Small "auto-filled" chip visible while the value is unchanged */}
+          {hasPrefill && name === prefillName && name !== "" && (
+            <View style={styles.autoChip}>
+              <MaterialCommunityIcons
+                name="auto-fix"
+                size={10}
+                color="#0EA5B0"
+              />
+              <Text style={styles.autoChipText}>auto</Text>
+            </View>
+          )}
         </View>
       </View>
+
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Expiry Date</Text>
         <View
@@ -936,6 +1016,10 @@ const LogNewMedicine = ({ navigation }) => {
             styles.inputContainer,
             focusedField === "expiry" && styles.inputFocused,
             !!expiryError && styles.inputError,
+            hasPrefill &&
+              expiry === prefillExpiry &&
+              prefillExpiry !== "" &&
+              styles.inputPrefilled,
           ]}
         >
           <MaterialCommunityIcons
@@ -970,6 +1054,19 @@ const LogNewMedicine = ({ navigation }) => {
               color={validateExpiry(expiry) ? "#10B981" : "#EF4444"}
             />
           )}
+          {hasPrefill &&
+            expiry === prefillExpiry &&
+            prefillExpiry !== "" &&
+            expiry.length !== 7 && (
+              <View style={styles.autoChip}>
+                <MaterialCommunityIcons
+                  name="auto-fix"
+                  size={10}
+                  color="#0EA5B0"
+                />
+                <Text style={styles.autoChipText}>auto</Text>
+              </View>
+            )}
         </View>
         {!!expiryError && (
           <View style={styles.errorRow}>
@@ -982,6 +1079,7 @@ const LogNewMedicine = ({ navigation }) => {
           </View>
         )}
       </View>
+
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Quantity in Stock</Text>
         <View
@@ -1007,6 +1105,7 @@ const LogNewMedicine = ({ navigation }) => {
           />
         </View>
       </View>
+
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Notes (optional)</Text>
         <View
@@ -1336,7 +1435,7 @@ const LogNewMedicine = ({ navigation }) => {
 
 export default LogNewMedicine;
 
-// ─── Styles (unchanged) ───────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#F7F9FC" },
   header: {
@@ -1448,7 +1547,29 @@ const styles = StyleSheet.create({
   textArea: { height: 88, paddingTop: 14, alignItems: "flex-start" },
   inputFocused: { borderColor: "#0EA5B0", backgroundColor: "#F0FAFB" },
   inputError: { borderColor: "#EF4444", backgroundColor: "#FFF5F5" },
+  // Subtle teal-tinted background for pre-filled fields
+  inputPrefilled: {
+    borderColor: "#BAE6EA",
+    backgroundColor: "#F0FAFB",
+  },
   input: { flex: 1, marginLeft: 10, fontSize: 15, color: "#1A2235" },
+  // Small inline badge indicating the field was auto-filled
+  autoChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E0F7FA",
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    gap: 3,
+    marginLeft: 6,
+  },
+  autoChipText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#0EA5B0",
+    letterSpacing: 0.3,
+  },
   errorRow: {
     flexDirection: "row",
     alignItems: "center",

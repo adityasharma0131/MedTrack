@@ -16,7 +16,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "../../Components/TextWrapper";
 import { analyzeImage } from "./ScanResult";
 
-
 const { width } = Dimensions.get("window");
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
@@ -72,6 +71,64 @@ const getSectionMeta = (title) => {
     color: palette.brightTeal,
     bg: "#E8FAF7",
   };
+};
+
+// ─── Expiry normaliser ────────────────────────────────────────────────────────
+// Converts common expiry formats from the AI result into MM/YYYY for LogNewMedicine.
+// Handles: "12/2026", "12/26", "Dec 2026", "December 2026", "2026-12", "12-2026"
+const MONTH_NAMES = {
+  jan: "01",
+  feb: "02",
+  mar: "03",
+  apr: "04",
+  may: "05",
+  jun: "06",
+  jul: "07",
+  aug: "08",
+  sep: "09",
+  oct: "10",
+  nov: "11",
+  dec: "12",
+};
+
+const normaliseExpiry = (raw) => {
+  if (!raw || typeof raw !== "string") return "";
+  const s = raw.trim();
+
+  // "MM/YYYY" or "MM/YY"
+  const slashMatch = s.match(/^(\d{1,2})\/(\d{2,4})$/);
+  if (slashMatch) {
+    const mm = slashMatch[1].padStart(2, "0");
+    let yyyy = slashMatch[2];
+    if (yyyy.length === 2) yyyy = "20" + yyyy;
+    return `${mm}/${yyyy}`;
+  }
+
+  // "YYYY-MM" or "MM-YYYY"
+  const dashMatch = s.match(/^(\d{2,4})-(\d{1,2})$|^(\d{1,2})-(\d{2,4})$/);
+  if (dashMatch) {
+    const a = dashMatch[1] || dashMatch[3];
+    const b = dashMatch[2] || dashMatch[4];
+    const [mm, yyyy] =
+      a.length === 4
+        ? [b.padStart(2, "0"), a]
+        : [a.padStart(2, "0"), b.length === 2 ? "20" + b : b];
+    return `${mm}/${yyyy}`;
+  }
+
+  // "Dec 2026" / "December 2026"
+  const wordMatch = s.match(/^([a-zA-Z]+)[.\s,]+(\d{2,4})$/);
+  if (wordMatch) {
+    const abbr = wordMatch[1].toLowerCase().slice(0, 3);
+    const mm = MONTH_NAMES[abbr];
+    if (mm) {
+      const yyyy =
+        wordMatch[2].length === 2 ? "20" + wordMatch[2] : wordMatch[2];
+      return `${mm}/${yyyy}`;
+    }
+  }
+
+  return ""; // unable to parse — leave blank so user fills it
 };
 
 // ─── Loading Screen ───────────────────────────────────────────────────────────
@@ -312,6 +369,134 @@ const LoadingView = ({ imageUri }) => {
   );
 };
 
+// ─── Log CTA Card ─────────────────────────────────────────────────────────────
+// Extracted as its own component for clarity and reusability.
+const LogMedicineCTA = ({ onPress, medicineName }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () =>
+    Animated.spring(scaleAnim, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+
+  const handlePressOut = () =>
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        style={ctaStyles.card}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={1}
+      >
+        {/* Left accent stripe */}
+        <View style={ctaStyles.accentStripe} />
+
+        {/* Icon column */}
+        <View style={ctaStyles.iconWrap}>
+          <MaterialCommunityIcons
+            name="pill-multiple"
+            size={26}
+            color={palette.white}
+          />
+        </View>
+
+        {/* Text column */}
+        <View style={ctaStyles.textCol}>
+          <Text weight="700" style={ctaStyles.title}>
+            Log This Medicine
+          </Text>
+          <Text style={ctaStyles.subtitle} numberOfLines={1}>
+            {medicineName
+              ? `Add "${medicineName}" to your tracker`
+              : "Add to your medicine tracker"}
+          </Text>
+        </View>
+
+        {/* Arrow */}
+        <View style={ctaStyles.arrowWrap}>
+          <MaterialCommunityIcons
+            name="arrow-right-circle"
+            size={28}
+            color={palette.brightTeal}
+          />
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+const ctaStyles = StyleSheet.create({
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: palette.card,
+    borderRadius: 20,
+    marginHorizontal: 0,
+    marginBottom: 16,
+    overflow: "hidden",
+    // shadow
+    shadowColor: palette.teal,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 6,
+    borderWidth: 1.5,
+    borderColor: palette.brightTeal + "40",
+  },
+  accentStripe: {
+    width: 5,
+    alignSelf: "stretch",
+    backgroundColor: palette.brightTeal,
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
+  },
+  iconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: palette.teal,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 14,
+    marginVertical: 16,
+    // subtle glow
+    shadowColor: palette.brightTeal,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  textCol: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 18,
+  },
+  title: {
+    fontSize: 16,
+    color: palette.textPrimary,
+    marginBottom: 3,
+  },
+  subtitle: {
+    fontSize: 12,
+    color: palette.textSoft,
+    lineHeight: 17,
+  },
+  arrowWrap: {
+    paddingRight: 16,
+  },
+});
+
 // ─── Main Result Screen ───────────────────────────────────────────────────────
 const ResultScreen = ({ navigation, route }) => {
   const { imageUri } = route.params || {};
@@ -347,6 +532,18 @@ const ResultScreen = ({ navigation, route }) => {
       }
     })();
   }, [imageUri]);
+
+  // ─── Navigate to Log Medicine with pre-fill data ─────────────────────────
+  const handleLogMedicine = () => {
+    const prefillName = resultData?.medicine?.name ?? "";
+    // normaliseExpiry converts the AI's raw expiry string → MM/YYYY for the form
+    const prefillExpiry = normaliseExpiry(resultData?.medicine?.expDate ?? "");
+
+    navigation.navigate("LogNewMedicine", {
+      prefillName,
+      prefillExpiry,
+    });
+  };
 
   if (isLoading) return <LoadingView imageUri={imageUri} />;
 
@@ -559,6 +756,12 @@ const ResultScreen = ({ navigation, route }) => {
           </View>
         </View>
 
+        {/* ── Log This Medicine CTA ── */}
+        <LogMedicineCTA
+          onPress={handleLogMedicine}
+          medicineName={medicine.name}
+        />
+
         {/* ── Section label ── */}
         <View style={styles.sectionDivider}>
           <View style={styles.sectionDividerLine} />
@@ -596,10 +799,6 @@ const ResultScreen = ({ navigation, route }) => {
 
               {section.content.map((item, i) => {
                 if (!item || item.trim() === "") return null;
-                const isBullet =
-                  item.startsWith("•") ||
-                  item.startsWith("-") ||
-                  /^[A-Z][\s\S]*:\s/.test(item);
                 const cleaned = item.replace(/^[•\-]\s*/, "");
                 return (
                   <View key={i} style={styles.contentRow}>
